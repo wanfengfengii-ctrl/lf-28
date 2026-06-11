@@ -176,6 +176,8 @@ export interface AlternativeRoute {
   createdAt: number;
 }
 
+export type AlertProcessingStatus = 'pending' | 'auto_processing' | 'route_recommended' | 'resources_dispatched' | 'manually_handled' | 'resolved';
+
 export interface CongestionAlert {
   id: string;
   hallId: string;
@@ -184,6 +186,54 @@ export interface CongestionAlert {
   timestamp: number;
   resolved: boolean;
   suggestions: string[];
+  processingStatus: AlertProcessingStatus;
+  recommendedRouteId: string | null;
+  dispatchRecordIds: string[];
+  processedAt: number | null;
+  handledBy: string | null;
+}
+
+export type DispatchActionType = 'auto_assign_guide' | 'auto_assign_volunteer' | 'auto_assign_audio' | 'recommend_route' | 'manual_adjust' | 'auto_trigger';
+
+export interface DispatchRecord {
+  id: string;
+  alertId: string | null;
+  hallId: string | null;
+  actionType: DispatchActionType;
+  resourceId: string | null;
+  resourceType: ResourceType | null;
+  routeId: string | null;
+  timeSlotId: string | null;
+  description: string;
+  timestamp: number;
+  operator: 'system' | 'manual';
+  result: 'success' | 'failed' | 'pending';
+  detail?: string;
+}
+
+export interface ResourceOccupancySnapshot {
+  id: string;
+  timestamp: number;
+  resourceType: ResourceType;
+  totalCount: number;
+  availableCount: number;
+  assignedCount: number;
+  busyCount: number;
+  restCount: number;
+  occupancyRate: number;
+}
+
+export interface AutoDispatchConfig {
+  enabled: boolean;
+  autoTriggerWarning: boolean;
+  autoTriggerCritical: boolean;
+  autoRecommendRoute: boolean;
+  autoAssignGuide: boolean;
+  autoAssignVolunteer: boolean;
+  autoAssignAudioDevice: boolean;
+  guideDispatchThreshold: number;
+  volunteerDispatchThreshold: number;
+  audioDeviceDispatchThreshold: number;
 }
 
 export interface DispatchExportData {
@@ -194,6 +244,9 @@ export interface DispatchExportData {
   resources: GuideResource[];
   alternativeRoutes: AlternativeRoute[];
   alerts: CongestionAlert[];
+  dispatchRecords: DispatchRecord[];
+  resourceSnapshots: ResourceOccupancySnapshot[];
+  autoDispatchConfig: AutoDispatchConfig;
   summary: {
     totalExpectedVisitors: number;
     totalActualVisitors: number;
@@ -202,6 +255,11 @@ export interface DispatchExportData {
     criticalHalls: number;
     availableResources: number;
     activeAlerts: number;
+    pendingAlerts: number;
+    autoProcessedAlerts: number;
+    resolvedAlerts: number;
+    totalDispatches: number;
+    autoDispatches: number;
   };
 }
 
@@ -242,4 +300,31 @@ export const CAPACITY_STATUS_COLORS: Record<HallCapacity['status'], string> = {
   normal: '#10B981',
   warning: '#F59E0B',
   critical: '#EF4444',
+};
+
+export const ALERT_PROCESSING_STATUS_LABELS: Record<AlertProcessingStatus, string> = {
+  pending: '待处理',
+  auto_processing: '自动处理中',
+  route_recommended: '路线已推荐',
+  resources_dispatched: '资源已调度',
+  manually_handled: '人工处理',
+  resolved: '已解决',
+};
+
+export const ALERT_PROCESSING_STATUS_COLORS: Record<AlertProcessingStatus, string> = {
+  pending: '#9CA3AF',
+  auto_processing: '#3B82F6',
+  route_recommended: '#8B5CF6',
+  resources_dispatched: '#14B8A6',
+  manually_handled: '#F59E0B',
+  resolved: '#10B981',
+};
+
+export const DISPATCH_ACTION_LABELS: Record<DispatchActionType, string> = {
+  auto_assign_guide: '自动分配讲解员',
+  auto_assign_volunteer: '自动分配志愿者',
+  auto_assign_audio: '自动分配语音设备',
+  recommend_route: '推荐替代路线',
+  manual_adjust: '人工调整',
+  auto_trigger: '自动触发预警',
 };

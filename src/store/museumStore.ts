@@ -17,8 +17,14 @@ import type {
   AlternativeRoute,
   CongestionAlert,
   DispatchExportData,
+  DispatchRecord,
+  ResourceOccupancySnapshot,
+  AutoDispatchConfig,
+  AlertProcessingStatus,
+  ResourceType,
+  DispatchActionType,
 } from '@/types';
-import { initialHalls, initialExhibits, initialConnections, initialPlans, initialTimeSlots, initialHallCapacities, initialGuideResources, initialAlternativeRoutes, initialCongestionAlerts } from '@/utils/mockData';
+import { initialHalls, initialExhibits, initialConnections, initialPlans, initialTimeSlots, initialHallCapacities, initialGuideResources, initialAlternativeRoutes, initialCongestionAlerts, initialDispatchRecords, initialResourceSnapshots, initialAutoDispatchConfig } from '@/utils/mockData';
 import {
   computeStats,
   validateImportConfig,
@@ -43,6 +49,9 @@ function loadFromStorage(): {
   guideResources: GuideResource[];
   alternativeRoutes: AlternativeRoute[];
   congestionAlerts: CongestionAlert[];
+  dispatchRecords: DispatchRecord[];
+  resourceSnapshots: ResourceOccupancySnapshot[];
+  autoDispatchConfig: AutoDispatchConfig;
 } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -67,6 +76,9 @@ function saveToStorage(state: MuseumState) {
         guideResources: state.guideResources,
         alternativeRoutes: state.alternativeRoutes,
         congestionAlerts: state.congestionAlerts,
+        dispatchRecords: state.dispatchRecords,
+        resourceSnapshots: state.resourceSnapshots,
+        autoDispatchConfig: state.autoDispatchConfig,
       })
     );
   } catch {
@@ -84,6 +96,9 @@ interface MuseumState {
   guideResources: GuideResource[];
   alternativeRoutes: AlternativeRoute[];
   congestionAlerts: CongestionAlert[];
+  dispatchRecords: DispatchRecord[];
+  resourceSnapshots: ResourceOccupancySnapshot[];
+  autoDispatchConfig: AutoDispatchConfig;
   activePlanId: string | null;
   playingStopIndex: number | null;
   isPlaying: boolean;
@@ -161,8 +176,23 @@ interface MuseumState {
   addCongestionAlert: (alert: Omit<CongestionAlert, 'id' | 'timestamp'>) => void;
   resolveCongestionAlert: (id: string) => void;
   removeCongestionAlert: (id: string) => void;
+  updateAlertProcessingStatus: (id: string, status: AlertProcessingStatus) => void;
+  setAlertRecommendedRoute: (alertId: string, routeId: string | null) => void;
+
+  addDispatchRecord: (record: Omit<DispatchRecord, 'id' | 'timestamp'>) => DispatchRecord | null;
+  removeDispatchRecord: (id: string) => void;
+
+  addResourceSnapshot: (snapshot: Omit<ResourceOccupancySnapshot, 'id' | 'timestamp'>) => void;
+  captureResourceSnapshot: (resourceType: ResourceType) => void;
+
+  updateAutoDispatchConfig: (config: Partial<AutoDispatchConfig>) => void;
 
   checkAndGenerateCongestionAlerts: () => void;
+
+  autoProcessAlert: (alertId: string) => boolean;
+  recommendRouteForAlert: (alertId: string) => AlternativeRoute | null;
+  autoDispatchResources: (alertId: string) => DispatchRecord[];
+  executeAutoDispatchWorkflow: (alertId: string) => void;
 
   exportDispatchPlan: () => DispatchExportData;
 }
@@ -179,6 +209,9 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
     guideResources: initialGuideResources,
     alternativeRoutes: initialAlternativeRoutes,
     congestionAlerts: initialCongestionAlerts,
+    dispatchRecords: initialDispatchRecords,
+    resourceSnapshots: initialResourceSnapshots,
+    autoDispatchConfig: initialAutoDispatchConfig,
   };
 
   return {
@@ -758,17 +791,35 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
     },
 
     addCongestionAlert: (alert) => {
-      const newAlert: CongestionAlert = { ...alert, id: uid(), timestamp: Date.now() };
+      const newAlert: CongestionAlert = {
+        ...alert,
+        id: uid(),
+        timestamp: Date.now(),
+        processingStatus: alert.processingStatus || 'pending',
+        recommendedRouteId: alert.recommendedRouteId || null,
+        dispatchRecordIds: alert.dispatchRecordIds || [],
+        processedAt: alert.processedAt || null,
+        handledBy: alert.handledBy || null,
+      };
       set((s) => {
         const congestionAlerts = [newAlert, ...s.congestionAlerts];
         saveToStorage({ ...s, congestionAlerts });
         return { congestionAlerts };
       });
+      if (get().autoDispatchConfig.enabled) {
+        const config = get().autoDispatchConfig;
+        const shouldAutoProcess =
+          (newAlert.level === 'critical' && config.autoTriggerCritical) ||
+          (newAlert.level === 'warning' && config.autoTriggerWarning);
+        if (shouldAutoProcess) {
+          setTimeout(() => get().executeAutoDispatchWorkflow(newAlert.id), 100);
+        }
+      }
     },
     resolveCongestionAlert: (id) => {
       set((s) => {
         const congestionAlerts = s.congestionAlerts.map((a) =>
-          a.id === id ? { ...a, resolved: true } : a
+          a.id === id ? { ...a, resolved: true, processingStatus: 'resolved' as const, processedAt: Date.now() } : a
         );
         saveToStorage({ ...s, congestionAlerts });
         return { congestionAlerts };
@@ -779,6 +830,81 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
         const congestionAlerts = s.congestionAlerts.filter((a) => a.id !== id);
         saveToStorage({ ...s, congestionAlerts });
         return { congestionAlerts };
+      });
+    },
+    updateAlertProcessingStatus: (id, status) => {
+      set((s) => {
+        const congestionAlerts = s.congestionAlerts.map((a) =>
+          a.id === id ? { ...a, processingStatus: status, processedAt: status === 'resolved' ? Date.now() : a.processedAt } : a
+        );
+        saveToStorage({ ...s, congestionAlerts });
+        return { congestionAlerts };
+      });
+    },
+    setAlertRecommendedRoute: (alertId, routeId) => {
+      set((s) => {
+        const congestionAlerts = s.congestionAlerts.map((a) =>
+          a.id === alertId ? { ...a, recommendedRouteId: routeId } : a
+        );
+        saveToStorage({ ...s, congestionAlerts });
+        return { congestionAlerts };
+      });
+    },
+
+    addDispatchRecord: (record) => {
+      const newRecord: DispatchRecord = { ...record, id: uid(), timestamp: Date.now() };
+      set((s) => {
+        const dispatchRecords = [newRecord, ...s.dispatchRecords];
+        let congestionAlerts = s.congestionAlerts;
+        if (newRecord.alertId) {
+          congestionAlerts = s.congestionAlerts.map((a) =>
+            a.id === newRecord.alertId
+              ? { ...a, dispatchRecordIds: [...a.dispatchRecordIds, newRecord.id] }
+              : a
+          );
+        }
+        saveToStorage({ ...s, dispatchRecords, congestionAlerts });
+        return { dispatchRecords, congestionAlerts };
+      });
+      return newRecord;
+    },
+    removeDispatchRecord: (id) => {
+      set((s) => {
+        const dispatchRecords = s.dispatchRecords.filter((r) => r.id !== id);
+        const congestionAlerts = s.congestionAlerts.map((a) => ({
+          ...a,
+          dispatchRecordIds: a.dispatchRecordIds.filter((rid) => rid !== id),
+        }));
+        saveToStorage({ ...s, dispatchRecords, congestionAlerts });
+        return { dispatchRecords, congestionAlerts };
+      });
+    },
+
+    addResourceSnapshot: (snapshot) => {
+      const newSnapshot: ResourceOccupancySnapshot = { ...snapshot, id: uid(), timestamp: Date.now() };
+      set((s) => {
+        const resourceSnapshots = [...s.resourceSnapshots, newSnapshot];
+        saveToStorage({ ...s, resourceSnapshots });
+        return { resourceSnapshots };
+      });
+    },
+    captureResourceSnapshot: (resourceType) => {
+      const s = get();
+      const resources = s.guideResources.filter((r) => r.type === resourceType);
+      const totalCount = resources.length;
+      const availableCount = resources.filter((r) => r.status === 'available').length;
+      const assignedCount = resources.filter((r) => r.status === 'assigned').length;
+      const busyCount = resources.filter((r) => r.status === 'busy').length;
+      const restCount = resources.filter((r) => r.status === 'rest').length;
+      const occupancyRate = totalCount > 0 ? Math.round(((totalCount - availableCount) / totalCount) * 100) : 0;
+      s.addResourceSnapshot({ resourceType, totalCount, availableCount, assignedCount, busyCount, restCount, occupancyRate });
+    },
+
+    updateAutoDispatchConfig: (config) => {
+      set((s) => {
+        const autoDispatchConfig = { ...s.autoDispatchConfig, ...config };
+        saveToStorage({ ...s, autoDispatchConfig });
+        return { autoDispatchConfig };
       });
     },
 
@@ -797,6 +923,11 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
             message: `${hallName}当前人数接近最大容纳量(${cap.currentVisitors}/${cap.maxCapacity})，存在严重拥堵风险`,
             resolved: false,
             suggestions: ['引导观众先参观其他展厅', '增加该区域志愿者', '启动替代导览路线'],
+            processingStatus: 'pending',
+            recommendedRouteId: null,
+            dispatchRecordIds: [],
+            processedAt: null,
+            handledBy: null,
           });
         } else if (cap.status === 'warning' && !existingUnresolved.has(cap.hallId)) {
           get().addCongestionAlert({
@@ -805,15 +936,180 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
             message: `${hallName}人流量较高(${cap.currentVisitors}/${cap.maxCapacity})，请关注后续变化`,
             resolved: false,
             suggestions: ['准备分流预案', '提醒讲解员控制参观节奏'],
+            processingStatus: 'pending',
+            recommendedRouteId: null,
+            dispatchRecordIds: [],
+            processedAt: null,
+            handledBy: null,
           });
         }
       }
+    },
+
+    autoProcessAlert: (alertId) => {
+      const s = get();
+      const alert = s.congestionAlerts.find((a) => a.id === alertId);
+      if (!alert || alert.resolved) return false;
+      s.updateAlertProcessingStatus(alertId, 'auto_processing');
+      try {
+        if (s.autoDispatchConfig.autoRecommendRoute) {
+          s.recommendRouteForAlert(alertId);
+        }
+        s.autoDispatchResources(alertId);
+        const updated = s.congestionAlerts.find((a) => a.id === alertId);
+        if (updated) {
+          if (updated.recommendedRouteId && updated.dispatchRecordIds.length > 0) {
+            s.updateAlertProcessingStatus(alertId, 'resources_dispatched');
+          } else if (updated.recommendedRouteId) {
+            s.updateAlertProcessingStatus(alertId, 'route_recommended');
+          }
+        }
+        return true;
+      } catch {
+        s.updateAlertProcessingStatus(alertId, 'pending');
+        return false;
+      }
+    },
+
+    recommendRouteForAlert: (alertId) => {
+      const s = get();
+      const alert = s.congestionAlerts.find((a) => a.id === alertId);
+      if (!alert) return null;
+      const hallExhibitIds = s.exhibits
+        .filter((e) => e.hallId === alert.hallId)
+        .map((e) => e.id);
+      const matchingRoutes = s.alternativeRoutes.filter((route) => {
+        const routeExhibits = route.stopIds;
+        const avoidsCongestedHall = !routeExhibits.some((id) => hallExhibitIds.includes(id));
+        const audienceMatch = true;
+        return avoidsCongestedHall && audienceMatch;
+      });
+      if (matchingRoutes.length > 0) {
+        const route = matchingRoutes[0];
+        s.setAlertRecommendedRoute(alertId, route.id);
+        s.addDispatchRecord({
+          alertId,
+          hallId: alert.hallId,
+          actionType: 'recommend_route',
+          resourceId: null,
+          resourceType: null,
+          routeId: route.id,
+          timeSlotId: null,
+          description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}拥堵，自动推荐替代路线"${route.name}"`,
+          operator: 'system',
+          result: 'success',
+        });
+        return route;
+      }
+      return null;
+    },
+
+    autoDispatchResources: (alertId) => {
+      const s = get();
+      const alert = s.congestionAlerts.find((a) => a.id === alertId);
+      if (!alert) return [];
+      const config = s.autoDispatchConfig;
+      const cap = s.hallCapacities.find((c) => c.hallId === alert.hallId);
+      const usagePercent = cap && cap.maxCapacity > 0 ? (cap.currentVisitors / cap.maxCapacity) * 100 : 0;
+      const ongoingSlot = s.timeSlots.find((t) => t.status === 'ongoing');
+      const timeSlotId = ongoingSlot?.id || s.timeSlots[0]?.id || null;
+      const firstPlan = s.plans[0];
+      const dispatched: DispatchRecord[] = [];
+
+      if (config.autoAssignVolunteer && usagePercent >= config.volunteerDispatchThreshold) {
+        const availableVolunteer = s.guideResources.find((r) => r.type === 'volunteer' && r.status === 'available');
+        if (availableVolunteer && firstPlan && timeSlotId) {
+          s.assignResource(availableVolunteer.id, firstPlan.id, timeSlotId);
+          const record = s.addDispatchRecord({
+            alertId,
+            hallId: alert.hallId,
+            actionType: 'auto_assign_volunteer',
+            resourceId: availableVolunteer.id,
+            resourceType: 'volunteer',
+            routeId: null,
+            timeSlotId,
+            description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}拥堵，自动分配志愿者"${availableVolunteer.name}"前往支援`,
+            operator: 'system',
+            result: 'success',
+          });
+          if (record) dispatched.push(record);
+          s.captureResourceSnapshot('volunteer');
+        }
+      }
+
+      if (config.autoAssignGuide && usagePercent >= config.guideDispatchThreshold) {
+        const availableGuide = s.guideResources.find((r) => r.type === 'guide' && r.status === 'available');
+        if (availableGuide && firstPlan && timeSlotId) {
+          s.assignResource(availableGuide.id, firstPlan.id, timeSlotId);
+          const record = s.addDispatchRecord({
+            alertId,
+            hallId: alert.hallId,
+            actionType: 'auto_assign_guide',
+            resourceId: availableGuide.id,
+            resourceType: 'guide',
+            routeId: null,
+            timeSlotId,
+            description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}严重拥堵，自动调配讲解员"${availableGuide.name}"协助疏导`,
+            operator: 'system',
+            result: 'success',
+          });
+          if (record) dispatched.push(record);
+          s.captureResourceSnapshot('guide');
+        }
+      }
+
+      if (config.autoAssignAudioDevice && usagePercent >= config.audioDeviceDispatchThreshold) {
+        const availableAudio = s.guideResources.find((r) => r.type === 'audio_device' && r.status === 'available');
+        if (availableAudio && firstPlan && timeSlotId) {
+          s.assignResource(availableAudio.id, firstPlan.id, timeSlotId);
+          const record = s.addDispatchRecord({
+            alertId,
+            hallId: alert.hallId,
+            actionType: 'auto_assign_audio',
+            resourceId: availableAudio.id,
+            resourceType: 'audio_device',
+            routeId: null,
+            timeSlotId,
+            description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}人流集中，投放语音设备"${availableAudio.name}"支持自助导览`,
+            operator: 'system',
+            result: 'success',
+          });
+          if (record) dispatched.push(record);
+          s.captureResourceSnapshot('audio_device');
+        }
+      }
+
+      return dispatched;
+    },
+
+    executeAutoDispatchWorkflow: (alertId) => {
+      const s = get();
+      const alert = s.congestionAlerts.find((a) => a.id === alertId);
+      if (!alert || alert.resolved) return;
+      s.addDispatchRecord({
+        alertId,
+        hallId: alert.hallId,
+        actionType: 'auto_trigger',
+        resourceId: null,
+        resourceType: null,
+        routeId: null,
+        timeSlotId: null,
+        description: `检测到${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}${alert.level === 'critical' ? '严重拥堵' : '人流量预警'}，启动自动调度流程`,
+        operator: 'system',
+        result: 'success',
+      });
+      s.autoProcessAlert(alertId);
     },
 
     exportDispatchPlan: () => {
       const s = get();
       const totalExpectedVisitors = s.timeSlots.reduce((sum, t) => sum + t.expectedVisitors, 0);
       const totalActualVisitors = s.timeSlots.reduce((sum, t) => sum + t.actualVisitors, 0);
+      const pendingAlerts = s.congestionAlerts.filter((a) => !a.resolved && (a.processingStatus === 'pending' || a.processingStatus === 'auto_processing')).length;
+      const autoProcessedAlerts = s.congestionAlerts.filter((a) => a.handledBy === 'system').length;
+      const resolvedAlerts = s.congestionAlerts.filter((a) => a.resolved).length;
+      const totalDispatches = s.dispatchRecords.length;
+      const autoDispatches = s.dispatchRecords.filter((r) => r.operator === 'system').length;
       return {
         exportedAt: Date.now(),
         date: new Date().toISOString().split('T')[0],
@@ -825,6 +1121,9 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
         resources: s.guideResources,
         alternativeRoutes: s.alternativeRoutes,
         alerts: s.congestionAlerts,
+        dispatchRecords: s.dispatchRecords,
+        resourceSnapshots: s.resourceSnapshots,
+        autoDispatchConfig: s.autoDispatchConfig,
         summary: {
           totalExpectedVisitors,
           totalActualVisitors,
@@ -833,6 +1132,11 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
           criticalHalls: s.hallCapacities.filter((h) => h.status === 'critical').length,
           availableResources: s.guideResources.filter((r) => r.status === 'available').length,
           activeAlerts: s.congestionAlerts.filter((a) => !a.resolved).length,
+          pendingAlerts,
+          autoProcessedAlerts,
+          resolvedAlerts,
+          totalDispatches,
+          autoDispatches,
         },
       };
     },
