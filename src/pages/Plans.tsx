@@ -1,4 +1,4 @@
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/museumStore';
 import { AUDIENCE_LABELS, AUDIENCE_COLORS } from '@/types';
 import type { AudienceType, TourPlan } from '@/types';
 import { Plus, Copy, Trash2, Users, Clock, MapPin } from 'lucide-react';
@@ -13,7 +13,7 @@ function formatDuration(seconds: number): string {
 }
 
 function PlanCard({ plan }: { plan: TourPlan }) {
-  const { exhibits, setActivePlan, deletePlan, duplicatePlan } = useMuseumStore();
+  const { exhibits, setActivePlan, deletePlan, duplicatePlan } = useRoutePlanStore();
   const totalDuration = plan.stops.reduce((sum, s) => sum + s.duration, 0);
   const hallIds = new Set(
     plan.stops.map((s) => exhibits.find((e) => e.id === s.exhibitId)?.hallId).filter(Boolean)
@@ -105,7 +105,7 @@ function PlanCard({ plan }: { plan: TourPlan }) {
 }
 
 export default function Plans() {
-  const { plans } = useMuseumStore();
+  const { plans } = useRoutePlanStore();
   const [showForm, setShowForm] = useState(false);
   const [filterType, setFilterType] = useState<AudienceType | 'all'>('all');
 

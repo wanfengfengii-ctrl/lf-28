@@ -12,7 +12,10 @@ import {
   Link,
   Unlink,
 } from 'lucide-react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useResourceAllocationStore } from '@/store/resourceAllocationStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
+import { useDispatchAlertStore } from '@/store/dispatchAlertStore';
+import { useUIStore } from '@/store/shared';
 import {
   RESOURCE_TYPE_LABELS,
   RESOURCE_STATUS_LABELS,
@@ -52,15 +55,15 @@ const initialAddForm: AddFormState = {
 };
 
 export default function ResourceAllocation() {
-  const guideResources = useMuseumStore((s) => s.guideResources);
-  const plans = useMuseumStore((s) => s.plans);
-  const timeSlots = useMuseumStore((s) => s.timeSlots);
-  const addGuideResource = useMuseumStore((s) => s.addGuideResource);
-  const updateGuideResource = useMuseumStore((s) => s.updateGuideResource);
-  const removeGuideResource = useMuseumStore((s) => s.removeGuideResource);
-  const assignResource = useMuseumStore((s) => s.assignResource);
-  const unassignResource = useMuseumStore((s) => s.unassignResource);
-  const showConfirmModal = useMuseumStore((s) => s.showConfirmModal);
+  const guideResources = useResourceAllocationStore((s) => s.guideResources);
+  const plans = useRoutePlanStore((s) => s.plans);
+  const timeSlots = useDispatchAlertStore((s) => s.timeSlots);
+  const addGuideResource = useResourceAllocationStore((s) => s.addGuideResource);
+  const updateGuideResource = useResourceAllocationStore((s) => s.updateGuideResource);
+  const removeGuideResource = useResourceAllocationStore((s) => s.removeGuideResource);
+  const assignResource = useResourceAllocationStore((s) => s.assignResource);
+  const unassignResource = useResourceAllocationStore((s) => s.unassignResource);
+  const showConfirmModal = useUIStore((s) => s.showConfirmModal);
 
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [showAddForm, setShowAddForm] = useState(false);

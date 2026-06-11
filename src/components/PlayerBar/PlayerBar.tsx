@@ -1,18 +1,18 @@
 import { useEffect, useRef } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
 import { Play, Pause, SkipBack, SkipForward, Sparkles, ListOrdered } from 'lucide-react';
 
 export default function PlayerBar() {
-  const exhibits = useMuseumStore((s) => s.exhibits);
-  const playingStopIndex = useMuseumStore((s) => s.playingStopIndex);
-  const isPlaying = useMuseumStore((s) => s.isPlaying);
-  const togglePlay = useMuseumStore((s) => s.togglePlay);
-  const setPlayingStopIndex = useMuseumStore((s) => s.setPlayingStopIndex);
-  const setIsPlaying = useMuseumStore((s) => s.setIsPlaying);
-  const getEffectiveStops = useMuseumStore((s) => s.getEffectiveStops);
-  const playOrderMode = useMuseumStore((s) => s.playOrderMode);
-  const setPlayOrderMode = useMuseumStore((s) => s.setPlayOrderMode);
-  const activePlanId = useMuseumStore((s) => s.activePlanId);
+  const exhibits = useRoutePlanStore((s) => s.exhibits);
+  const playingStopIndex = useRoutePlanStore((s) => s.playingStopIndex);
+  const isPlaying = useRoutePlanStore((s) => s.isPlaying);
+  const togglePlay = useRoutePlanStore((s) => s.togglePlay);
+  const setPlayingStopIndex = useRoutePlanStore((s) => s.setPlayingStopIndex);
+  const setIsPlaying = useRoutePlanStore((s) => s.setIsPlaying);
+  const getEffectiveStops = useRoutePlanStore((s) => s.getEffectiveStops);
+  const playOrderMode = useRoutePlanStore((s) => s.playOrderMode);
+  const setPlayOrderMode = useRoutePlanStore((s) => s.setPlayOrderMode);
+  const activePlanId = useRoutePlanStore((s) => s.activePlanId);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stops = getEffectiveStops();

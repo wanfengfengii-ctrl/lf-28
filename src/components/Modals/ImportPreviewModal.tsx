@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useMuseumStore } from '@/store/museumStore';
+import { useValidationImportStore } from '@/store/validationImportStore';
 import {
   X,
   Upload,
@@ -30,9 +30,9 @@ function formatDuration(seconds: number) {
 }
 
 export default function ImportPreviewModal() {
-  const importPreview = useMuseumStore((s) => s.importPreview);
-  const cancelImport = useMuseumStore((s) => s.cancelImport);
-  const confirmImportAndOverride = useMuseumStore((s) => s.confirmImportAndOverride);
+  const importPreview = useValidationImportStore((s) => s.importPreview);
+  const cancelImport = useValidationImportStore((s) => s.cancelImport);
+  const confirmImportAndOverride = useValidationImportStore((s) => s.confirmImportAndOverride);
 
   const [expandedPlans, setExpandedPlans] = useState<Record<number, boolean>>({});
   const [error, setError] = useState<string | null>(null);

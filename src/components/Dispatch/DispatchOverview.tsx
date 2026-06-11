@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useDispatchAlertStore } from '@/store/dispatchAlertStore';
+import { useResourceAllocationStore } from '@/store/resourceAllocationStore';
 import {
   Users, Building2, AlertTriangle, CheckCircle, UsersRound, Bell, TrendingUp, TrendingDown, Zap, Bot, History, User, Mic, Clock, Activity, Route, PieChart
 } from 'lucide-react';
@@ -73,7 +74,8 @@ const RESOURCE_ICONS: Record<ResourceType, React.ReactNode> = {
 };
 
 export default function DispatchOverview() {
-  const { timeSlots, hallCapacities, guideResources, congestionAlerts, dispatchRecords, resourceSnapshots, autoDispatchConfig } = useMuseumStore();
+  const { timeSlots, hallCapacities, congestionAlerts, dispatchRecords, alternativeRoutes, autoDispatchConfig } = useDispatchAlertStore();
+  const { guideResources, resourceSnapshots } = useResourceAllocationStore();
 
   const stats = useMemo(() => {
     const totalExpectedVisitors = timeSlots.reduce((sum, t) => sum + t.expectedVisitors, 0);

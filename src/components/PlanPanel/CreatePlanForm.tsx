@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
 import { AUDIENCE_LABELS, AUDIENCE_COLORS } from '@/types';
 import type { AudienceType } from '@/types';
 
@@ -10,7 +10,7 @@ interface CreatePlanFormProps {
 const AUDIENCE_TYPES: AudienceType[] = ['children', 'general', 'research'];
 
 export default function CreatePlanForm({ onCancel }: CreatePlanFormProps) {
-  const createPlan = useMuseumStore((s) => s.createPlan);
+  const createPlan = useRoutePlanStore((s) => s.createPlan);
   const [name, setName] = useState('');
   const [audienceType, setAudienceType] = useState<AudienceType>('general');
 

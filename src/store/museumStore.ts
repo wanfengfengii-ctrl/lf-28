@@ -1,4 +1,15 @@
-import { create } from 'zustand';
+export { useRoutePlanStore } from './routePlanStore';
+export { useValidationImportStore } from './validationImportStore';
+export { useDispatchAlertStore } from './dispatchAlertStore';
+export { useResourceAllocationStore } from './resourceAllocationStore';
+export { useUIStore } from './shared';
+
+import { useRoutePlanStore } from './routePlanStore';
+import { useValidationImportStore } from './validationImportStore';
+import { useDispatchAlertStore } from './dispatchAlertStore';
+import { useResourceAllocationStore } from './resourceAllocationStore';
+import { useUIStore } from './shared';
+
 import type {
   Hall,
   Exhibit,
@@ -10,7 +21,6 @@ import type {
   PlayOrderMode,
   ValidationCenterReport,
   ImportPreviewData,
-  RouteConfig,
   TimeSlot,
   HallCapacity,
   GuideResource,
@@ -22,71 +32,9 @@ import type {
   AutoDispatchConfig,
   AlertProcessingStatus,
   ResourceType,
-  DispatchActionType,
 } from '@/types';
-import { initialHalls, initialExhibits, initialConnections, initialPlans, initialTimeSlots, initialHallCapacities, initialGuideResources, initialAlternativeRoutes, initialCongestionAlerts, initialDispatchRecords, initialResourceSnapshots, initialAutoDispatchConfig } from '@/utils/mockData';
-import {
-  computeStats,
-  validateImportConfig,
-  generateRecommendedRoute,
-  generateValidationCenterReport,
-  generateImportPreviewData,
-} from '@/utils/validation';
 
-function uid(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
-const STORAGE_KEY = 'museum-guide-config';
-
-function loadFromStorage(): {
-  halls: Hall[];
-  exhibits: Exhibit[];
-  connections: HallConnection[];
-  plans: TourPlan[];
-  timeSlots: TimeSlot[];
-  hallCapacities: HallCapacity[];
-  guideResources: GuideResource[];
-  alternativeRoutes: AlternativeRoute[];
-  congestionAlerts: CongestionAlert[];
-  dispatchRecords: DispatchRecord[];
-  resourceSnapshots: ResourceOccupancySnapshot[];
-  autoDispatchConfig: AutoDispatchConfig;
-} | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore parse errors
-  }
-  return null;
-}
-
-function saveToStorage(state: MuseumState) {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        halls: state.halls,
-        exhibits: state.exhibits,
-        connections: state.connections,
-        plans: state.plans,
-        timeSlots: state.timeSlots,
-        hallCapacities: state.hallCapacities,
-        guideResources: state.guideResources,
-        alternativeRoutes: state.alternativeRoutes,
-        congestionAlerts: state.congestionAlerts,
-        dispatchRecords: state.dispatchRecords,
-        resourceSnapshots: state.resourceSnapshots,
-        autoDispatchConfig: state.autoDispatchConfig,
-      })
-    );
-  } catch {
-    // ignore storage errors
-  }
-}
-
-interface MuseumState {
+export interface MuseumState {
   halls: Hall[];
   exhibits: Exhibit[];
   connections: HallConnection[];
@@ -170,8 +118,8 @@ interface MuseumState {
   unassignResource: (resourceId: string) => void;
 
   addAlternativeRoute: (route: Omit<AlternativeRoute, 'id' | 'createdAt'>) => void;
-    updateAlternativeRoute: (id: string, updates: Partial<AlternativeRoute>) => void;
-    removeAlternativeRoute: (id: string) => void;
+  updateAlternativeRoute: (id: string, updates: Partial<AlternativeRoute>) => void;
+  removeAlternativeRoute: (id: string) => void;
 
   addCongestionAlert: (alert: Omit<CongestionAlert, 'id' | 'timestamp'>) => void;
   resolveCongestionAlert: (id: string) => void;
@@ -197,948 +145,125 @@ interface MuseumState {
   exportDispatchPlan: () => DispatchExportData;
 }
 
-export const useMuseumStore = create<MuseumState>((set, get) => {
-  const stored = loadFromStorage();
-  const initial = stored || {
-    halls: initialHalls,
-    exhibits: initialExhibits,
-    connections: initialConnections,
-    plans: initialPlans,
-    timeSlots: initialTimeSlots,
-    hallCapacities: initialHallCapacities,
-    guideResources: initialGuideResources,
-    alternativeRoutes: initialAlternativeRoutes,
-    congestionAlerts: initialCongestionAlerts,
-    dispatchRecords: initialDispatchRecords,
-    resourceSnapshots: initialResourceSnapshots,
-    autoDispatchConfig: initialAutoDispatchConfig,
-  };
+export function getMuseumState(): MuseumState {
+  const rp = useRoutePlanStore.getState();
+  const vi = useValidationImportStore.getState();
+  const da = useDispatchAlertStore.getState();
+  const ra = useResourceAllocationStore.getState();
+  const ui = useUIStore.getState();
 
   return {
-    ...initial,
-    activePlanId: initial.plans[0]?.id || null,
-    playingStopIndex: null,
-    isPlaying: false,
-    playOrderMode: 'edit',
-    recommendedStops: null,
-    importPreview: null,
-    confirmModal: null,
+    halls: rp.halls,
+    exhibits: rp.exhibits,
+    connections: rp.connections,
+    plans: rp.plans,
+    activePlanId: rp.activePlanId,
+    playingStopIndex: rp.playingStopIndex,
+    isPlaying: rp.isPlaying,
+    playOrderMode: rp.playOrderMode,
+    recommendedStops: rp.recommendedStops,
 
-    addHall: (hall) => {
-      const newHall: Hall = { ...hall, id: uid() };
-      set((s) => {
-        const halls = [...s.halls, newHall];
-        saveToStorage({ ...s, halls });
-        return { halls };
-      });
-    },
-    updateHall: (id, updates) => {
-      set((s) => {
-        const halls = s.halls.map((h) => (h.id === id ? { ...h, ...updates } : h));
-        saveToStorage({ ...s, halls });
-        return { halls };
-      });
-    },
-    removeHall: (id) => {
-      set((s) => {
-        const halls = s.halls.filter((h) => h.id !== id);
-        const exhibits = s.exhibits.filter((e) => e.hallId !== id);
-        const connections = s.connections.filter(
-          (c) => c.fromHallId !== id && c.toHallId !== id
-        );
-        const plans = s.plans.map((p) => ({
-          ...p,
-          stops: p.stops.filter((st) => !exhibits.some((e) => e.id === st.exhibitId)),
-        }));
-        saveToStorage({ ...s, halls, exhibits, connections, plans });
-        return { halls, exhibits, connections, plans };
-      });
-    },
+    importPreview: vi.importPreview,
 
-    addExhibit: (exhibit) => {
-      const newExhibit: Exhibit = { ...exhibit, id: uid() };
-      set((s) => {
-        const exhibits = [...s.exhibits, newExhibit];
-        saveToStorage({ ...s, exhibits });
-        return { exhibits };
-      });
-    },
-    updateExhibit: (id, updates) => {
-      set((s) => {
-        const exhibits = s.exhibits.map((e) => (e.id === id ? { ...e, ...updates } : e));
-        saveToStorage({ ...s, exhibits });
-        return { exhibits };
-      });
-    },
-    removeExhibit: (id) => {
-      const state = get();
-      const referencedPlans = state.plans.filter((p) =>
-        p.stops.some((s) => s.exhibitId === id)
-      );
-      if (referencedPlans.length > 0) {
-        const names = referencedPlans.map((p) => p.name).join('、');
-        get().showConfirmModal(
-          '删除展品',
-          `该展品已被方案"${names}"引用，确定要删除吗？删除后相关方案中的停靠点也将移除。`,
-          () => {
-            set((s) => {
-              const exhibits = s.exhibits.filter((e) => e.id !== id);
-              const plans = s.plans.map((p) => ({
-                ...p,
-                stops: p.stops.filter((st) => st.exhibitId !== id),
-              }));
-              saveToStorage({ ...s, exhibits, plans });
-              return { exhibits, plans, confirmModal: null };
-            });
-          }
-        );
-      } else {
-        set((s) => {
-          const exhibits = s.exhibits.filter((e) => e.id !== id);
-          saveToStorage({ ...s, exhibits });
-          return { exhibits };
-        });
-      }
-    },
+    timeSlots: da.timeSlots,
+    hallCapacities: da.hallCapacities,
+    congestionAlerts: da.congestionAlerts,
+    dispatchRecords: da.dispatchRecords,
+    alternativeRoutes: da.alternativeRoutes,
+    autoDispatchConfig: da.autoDispatchConfig,
 
-    addConnection: (conn) => {
-      const newConn: HallConnection = { ...conn, id: uid() };
-      set((s) => {
-        const connections = [...s.connections, newConn];
-        saveToStorage({ ...s, connections });
-        return { connections };
-      });
-    },
-    removeConnection: (id) => {
-      set((s) => {
-        const connections = s.connections.filter((c) => c.id !== id);
-        saveToStorage({ ...s, connections });
-        return { connections };
-      });
-    },
-    updateConnectionPriority: (id, priority) => {
-      set((s) => {
-        const connections = s.connections.map((c) =>
-          c.id === id ? { ...c, priority } : c
-        );
-        saveToStorage({ ...s, connections });
-        return { connections };
-      });
-    },
+    guideResources: ra.guideResources,
+    resourceSnapshots: ra.resourceSnapshots,
 
-    createPlan: (name, audienceType) => {
-      const newPlan: TourPlan = {
-        id: uid(),
-        name,
-        audienceType,
-        stops: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      set((s) => {
-        const plans = [...s.plans, newPlan];
-        saveToStorage({ ...s, plans });
-        return { plans, activePlanId: newPlan.id, recommendedStops: null, playOrderMode: 'edit' };
-      });
-    },
-    deletePlan: (id) => {
-      set((s) => {
-        const plans = s.plans.filter((p) => p.id !== id);
-        const activePlanId = s.activePlanId === id ? (plans[0]?.id || null) : s.activePlanId;
-        saveToStorage({ ...s, plans, activePlanId });
-        return {
-          plans,
-          activePlanId,
-          recommendedStops: s.activePlanId === id ? null : s.recommendedStops,
-          playOrderMode: s.activePlanId === id ? 'edit' : s.playOrderMode,
-        };
-      });
-    },
-    duplicatePlan: (id) => {
-      const state = get();
-      const source = state.plans.find((p) => p.id === id);
-      if (!source) return;
-      const newPlan: TourPlan = {
-        ...source,
-        id: uid(),
-        name: `${source.name} (副本)`,
-        stops: source.stops.map((s) => ({ ...s, id: uid() })),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      set((s) => {
-        const plans = [...s.plans, newPlan];
-        saveToStorage({ ...s, plans });
-        return { plans, activePlanId: newPlan.id, recommendedStops: null, playOrderMode: 'edit' };
-      });
-    },
-    setActivePlan: (id) => {
-      set({
-        activePlanId: id,
-        playingStopIndex: null,
-        isPlaying: false,
-        recommendedStops: null,
-        playOrderMode: 'edit',
-      });
-    },
-    updatePlanName: (id, name) => {
-      set((s) => {
-        const plans = s.plans.map((p) =>
-          p.id === id ? { ...p, name, updatedAt: Date.now() } : p
-        );
-        saveToStorage({ ...s, plans });
-        return { plans };
-      });
-    },
-    updatePlanAudienceType: (id, audienceType) => {
-      set((s) => {
-        const plans = s.plans.map((p) =>
-          p.id === id ? { ...p, audienceType, updatedAt: Date.now() } : p
-        );
-        saveToStorage({ ...s, plans });
-        return { plans };
-      });
-    },
+    confirmModal: ui.confirmModal,
 
-    addStopToPlan: (planId, exhibitId) => {
-      const state = get();
-      const plan = state.plans.find((p) => p.id === planId);
-      const exhibit = state.exhibits.find((e) => e.id === exhibitId);
+    addHall: rp.addHall,
+    updateHall: rp.updateHall,
+    removeHall: rp.removeHall,
 
-      if (!plan || !exhibit) return;
+    addExhibit: rp.addExhibit,
+    updateExhibit: rp.updateExhibit,
+    removeExhibit: rp.removeExhibit,
 
-      if (plan.stops.some((s) => s.exhibitId === exhibitId)) {
-        return;
-      }
+    addConnection: rp.addConnection,
+    removeConnection: rp.removeConnection,
+    updateConnectionPriority: rp.updateConnectionPriority,
 
-      if (plan.stops.length > 0) {
-        const lastStop = plan.stops[plan.stops.length - 1];
-        const lastExhibit = state.exhibits.find((e) => e.id === lastStop.exhibitId);
-        if (lastExhibit && lastExhibit.hallId !== exhibit.hallId) {
-          const connected = state.connections.some(
-            (c) =>
-              (c.fromHallId === lastExhibit.hallId && c.toHallId === exhibit.hallId) ||
-              (c.fromHallId === exhibit.hallId && c.toHallId === lastExhibit.hallId)
-          );
-          if (!connected) {
-            get().showConfirmModal(
-              '路线不连通',
-              `从"${lastExhibit.name}"到"${exhibit.name}"的展厅之间没有直接连接，确定要添加吗？`,
-              () => {
-                set((s) => {
-                  const plans = s.plans.map((p) => {
-                    if (p.id !== planId) return p;
-                    const ex = s.exhibits.find((e) => e.id === exhibitId);
-                    const newStop: TourStop = {
-                      id: uid(),
-                      exhibitId,
-                      order: p.stops.length + 1,
-                      duration: ex?.defaultDuration || 120,
-                    };
-                    return { ...p, stops: [...p.stops, newStop], updatedAt: Date.now() };
-                  });
-                  saveToStorage({ ...s, plans });
-                  return { plans, confirmModal: null, recommendedStops: null };
-                });
-              }
-            );
-            return;
-          }
-        }
-      }
+    createPlan: rp.createPlan,
+    deletePlan: rp.deletePlan,
+    duplicatePlan: rp.duplicatePlan,
+    setActivePlan: rp.setActivePlan,
+    updatePlanName: rp.updatePlanName,
+    updatePlanAudienceType: rp.updatePlanAudienceType,
 
-      set((s) => {
-        const plans = s.plans.map((p) => {
-          if (p.id !== planId) return p;
-          const ex = s.exhibits.find((e) => e.id === exhibitId);
-          const newStop: TourStop = {
-            id: uid(),
-            exhibitId,
-            order: p.stops.length + 1,
-            duration: ex?.defaultDuration || 120,
-          };
-          return { ...p, stops: [...p.stops, newStop], updatedAt: Date.now() };
-        });
-        saveToStorage({ ...s, plans });
-        return { plans, recommendedStops: null };
-      });
-    },
-    removeStopFromPlan: (planId, stopId) => {
-      set((s) => {
-        const plans = s.plans.map((p) => {
-          if (p.id !== planId) return p;
-          const stops = p.stops
-            .filter((st) => st.id !== stopId)
-            .map((st, i) => ({ ...st, order: i + 1 }));
-          return { ...p, stops, updatedAt: Date.now() };
-        });
-        saveToStorage({ ...s, plans });
-        return { plans, recommendedStops: null };
-      });
-    },
-    reorderStops: (planId, stops) => {
-      set((s) => {
-        const plans = s.plans.map((p) => {
-          if (p.id !== planId) return p;
-          const reordered = stops.map((st, i) => ({ ...st, order: i + 1 }));
-          return { ...p, stops: reordered, updatedAt: Date.now() };
-        });
-        saveToStorage({ ...s, plans });
-        return { plans, recommendedStops: null };
-      });
-    },
-    updateStopDuration: (planId, stopId, duration) => {
-      if (duration <= 0) return;
-      set((s) => {
-        const plans = s.plans.map((p) => {
-          if (p.id !== planId) return p;
-          const stops = p.stops.map((st) =>
-            st.id === stopId ? { ...st, duration } : st
-          );
-          return { ...p, stops, updatedAt: Date.now() };
-        });
-        saveToStorage({ ...s, plans });
-        return { plans };
-      });
-    },
+    addStopToPlan: rp.addStopToPlan,
+    removeStopFromPlan: rp.removeStopFromPlan,
+    reorderStops: rp.reorderStops,
+    updateStopDuration: rp.updateStopDuration,
 
-    setPlayingStopIndex: (index) => set({ playingStopIndex: index }),
-    setIsPlaying: (playing) => set({ isPlaying: playing }),
-    togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
+    setPlayingStopIndex: rp.setPlayingStopIndex,
+    setIsPlaying: rp.setIsPlaying,
+    togglePlay: rp.togglePlay,
 
-    showConfirmModal: (title, message, onConfirm) =>
-      set({ confirmModal: { open: true, title, message, onConfirm } }),
-    closeConfirmModal: () => set({ confirmModal: null }),
+    showConfirmModal: ui.showConfirmModal,
+    closeConfirmModal: ui.closeConfirmModal,
 
-    setPlayOrderMode: (mode) => {
-      const s = get();
-      if (mode === 'recommended' && !s.recommendedStops) {
-        const recommended = s.generateRecommendedRouteOnly();
-        set({ playOrderMode: mode, recommendedStops: recommended });
-      } else {
-        set({ playOrderMode: mode });
-      }
-    },
-    generateAndApplyRecommendedRoute: () => {
-      const s = get();
-      const plan = s.plans.find((p) => p.id === s.activePlanId);
-      if (!plan || plan.stops.length < 2) return false;
+    setPlayOrderMode: rp.setPlayOrderMode,
+    generateAndApplyRecommendedRoute: rp.generateAndApplyRecommendedRoute,
+    generateRecommendedRouteOnly: rp.generateRecommendedRouteOnly,
+    clearRecommendedRoute: rp.clearRecommendedRoute,
+    getEffectiveStops: rp.getEffectiveStops,
 
-      const recommended = generateRecommendedRoute(
-        plan.stops,
-        s.exhibits,
-        s.connections
-      );
+    getStats: rp.getStats,
+    getActivePlan: rp.getActivePlan,
+    getValidationReport: rp.getValidationReport,
 
-      set((state) => {
-        const plans = state.plans.map((p) => {
-          if (p.id !== state.activePlanId) return p;
-          const reordered = recommended.map((st, i) => ({ ...st, order: i + 1 }));
-          return { ...p, stops: reordered, updatedAt: Date.now() };
-        });
-        saveToStorage({ ...state, plans });
-        return {
-          plans,
-          recommendedStops: null,
-          playOrderMode: 'edit',
-        };
-      });
-      return true;
-    },
-    generateRecommendedRouteOnly: () => {
-      const s = get();
-      const plan = s.plans.find((p) => p.id === s.activePlanId);
-      if (!plan || plan.stops.length < 2) return null;
-      return generateRecommendedRoute(plan.stops, s.exhibits, s.connections);
-    },
-    clearRecommendedRoute: () => set({ recommendedStops: null, playOrderMode: 'edit' }),
-    getEffectiveStops: () => {
-      const s = get();
-      const plan = s.plans.find((p) => p.id === s.activePlanId);
-      if (!plan) return [];
-      if (s.playOrderMode === 'recommended' && s.recommendedStops) {
-        return s.recommendedStops;
-      }
-      return plan.stops;
-    },
+    setImportPreview: vi.setImportPreview,
+    previewImportConfig: vi.previewImportConfig,
+    confirmImportAndOverride: vi.confirmImportAndOverride,
+    cancelImport: vi.cancelImport,
 
-    getStats: () => {
-      const s = get();
-      const plan = s.plans.find((p) => p.id === s.activePlanId);
-      if (!plan) return { totalDuration: 0, duplicateExhibits: [], jumpPoints: [], repeatedPaths: [] };
-      return computeStats(plan, s.exhibits, s.halls, s.connections);
-    },
-    getActivePlan: () => {
-      const s = get();
-      return s.plans.find((p) => p.id === s.activePlanId);
-    },
-    getValidationReport: () => {
-      const s = get();
-      const plan = s.plans.find((p) => p.id === s.activePlanId);
-      if (!plan) return null;
-      return generateValidationCenterReport(plan, s.exhibits, s.halls, s.connections);
-    },
+    exportConfig: vi.exportConfig,
+    importConfig: vi.importConfig,
 
-    setImportPreview: (preview) => set({ importPreview: preview }),
-    previewImportConfig: (json) => {
-      try {
-        const config = JSON.parse(json);
-        const baseValid = validateImportConfig(config);
-        if (!baseValid.valid && baseValid.errors.some((e) =>
-          e.includes('缺少展厅') || e.includes('缺少展品') || e.includes('缺少连接') || e.includes('缺少方案')
-        )) {
-          return null;
-        }
-        const preview = generateImportPreviewData(config as RouteConfig, json);
-        set({ importPreview: preview });
-        return preview;
-      } catch {
-        return null;
-      }
-    },
-    confirmImportAndOverride: () => {
-      const s = get();
-      const preview = s.importPreview;
-      if (!preview) {
-        return { success: false, errors: ['没有待确认的导入预览数据'] };
-      }
-      const hasCritical = preview.planValidationReports.some((r) => r.report.hasCriticalIssues);
-      const hasBaseErrors = !preview.validation.valid;
-      if (hasBaseErrors || hasCritical) {
-        return { success: false, errors: ['存在严重校验问题，无法导入，请修正后再试'] };
-      }
-      const c = preview.config;
-      set((state) => {
-        const newState = {
-          halls: c.halls,
-          exhibits: c.exhibits,
-          connections: c.connections,
-          plans: c.plans,
-          activePlanId: c.plans[0]?.id || null,
-          importPreview: null,
-          recommendedStops: null,
-          playOrderMode: 'edit' as PlayOrderMode,
-        };
-        saveToStorage({ ...state, ...newState });
-        return newState;
-      });
-      return { success: true, errors: [] };
-    },
-    cancelImport: () => set({ importPreview: null }),
+    addTimeSlot: da.addTimeSlot,
+    updateTimeSlot: da.updateTimeSlot,
+    removeTimeSlot: da.removeTimeSlot,
 
-    exportConfig: () => {
-      const s = get();
-      return JSON.stringify(
-        { halls: s.halls, exhibits: s.exhibits, connections: s.connections, plans: s.plans },
-        null,
-        2
-      );
-    },
-    importConfig: (json) => {
-      try {
-        const config = JSON.parse(json);
-        const result = validateImportConfig(config);
-        if (!result.valid) {
-          return { success: false, errors: result.errors };
-        }
-        const c = config as { halls: Hall[]; exhibits: Exhibit[]; connections: HallConnection[]; plans: TourPlan[] };
-        set((s) => {
-          const newState = {
-            halls: c.halls,
-            exhibits: c.exhibits,
-            connections: c.connections,
-            plans: c.plans,
-            activePlanId: c.plans[0]?.id || null,
-          };
-          saveToStorage({ ...s, ...newState });
-          return newState;
-        });
-        return { success: true, errors: [] };
-      } catch {
-        return { success: false, errors: ['JSON 格式解析失败'] };
-      }
-    },
+    updateHallCapacity: da.updateHallCapacity,
+    updateHallVisitors: da.updateHallVisitors,
 
-    addTimeSlot: (slot) => {
-      const newSlot: TimeSlot = { ...slot, id: uid() };
-      set((s) => {
-        const timeSlots = [...s.timeSlots, newSlot].sort((a, b) => a.startTime.localeCompare(b.startTime));
-        saveToStorage({ ...s, timeSlots });
-        return { timeSlots };
-      });
-    },
-    updateTimeSlot: (id, updates) => {
-      set((s) => {
-        const timeSlots = s.timeSlots.map((t) => (t.id === id ? { ...t, ...updates } : t));
-        saveToStorage({ ...s, timeSlots });
-        return { timeSlots };
-      });
-    },
-    removeTimeSlot: (id) => {
-      set((s) => {
-        const timeSlots = s.timeSlots.filter((t) => t.id !== id);
-        const guideResources = s.guideResources.map((r) =>
-          r.assignedTimeSlotId === id ? { ...r, assignedTimeSlotId: null, status: 'available' as const } : r
-        );
-        saveToStorage({ ...s, timeSlots, guideResources });
-        return { timeSlots, guideResources };
-      });
-    },
+    addGuideResource: ra.addGuideResource,
+    updateGuideResource: ra.updateGuideResource,
+    removeGuideResource: ra.removeGuideResource,
+    assignResource: ra.assignResource,
+    unassignResource: ra.unassignResource,
 
-    updateHallCapacity: (hallId, updates) => {
-      set((s) => {
-        let hallCapacities = s.hallCapacities.map((h) =>
-          h.hallId === hallId ? { ...h, ...updates } : h
-        );
-        if (!hallCapacities.some((h) => h.hallId === hallId)) {
-          hallCapacities = [
-            ...hallCapacities,
-            { hallId, maxCapacity: 50, currentVisitors: 0, warningThreshold: 38, criticalThreshold: 45, status: 'normal', ...updates } as HallCapacity,
-          ];
-        }
-        saveToStorage({ ...s, hallCapacities });
-        return { hallCapacities };
-      });
-    },
-    updateHallVisitors: (hallId, visitors) => {
-      const s = get();
-      const cap = s.hallCapacities.find((h) => h.hallId === hallId);
-      if (!cap) {
-        get().updateHallCapacity(hallId, { currentVisitors: visitors, status: 'normal' });
-        return;
-      }
-      let status: HallCapacity['status'] = 'normal';
-      if (visitors >= cap.criticalThreshold) status = 'critical';
-      else if (visitors >= cap.warningThreshold) status = 'warning';
-      set((state) => {
-        const hallCapacities = state.hallCapacities.map((h) =>
-          h.hallId === hallId ? { ...h, currentVisitors: visitors, status } : h
-        );
-        saveToStorage({ ...state, hallCapacities });
-        return { hallCapacities };
-      });
-      get().checkAndGenerateCongestionAlerts();
-    },
+    addAlternativeRoute: da.addAlternativeRoute,
+    updateAlternativeRoute: da.updateAlternativeRoute,
+    removeAlternativeRoute: da.removeAlternativeRoute,
 
-    addGuideResource: (resource) => {
-      const newResource: GuideResource = { ...resource, id: uid() };
-      set((s) => {
-        const guideResources = [...s.guideResources, newResource];
-        saveToStorage({ ...s, guideResources });
-        return { guideResources };
-      });
-    },
-    updateGuideResource: (id, updates) => {
-      set((s) => {
-        const guideResources = s.guideResources.map((r) => (r.id === id ? { ...r, ...updates } : r));
-        saveToStorage({ ...s, guideResources });
-        return { guideResources };
-      });
-    },
-    removeGuideResource: (id) => {
-      set((s) => {
-        const guideResources = s.guideResources.filter((r) => r.id !== id);
-        saveToStorage({ ...s, guideResources });
-        return { guideResources };
-      });
-    },
-    assignResource: (resourceId, planId, timeSlotId) => {
-      set((s) => {
-        const guideResources = s.guideResources.map((r) =>
-          r.id === resourceId
-            ? { ...r, assignedPlanId: planId, assignedTimeSlotId: timeSlotId, status: 'assigned' as const }
-            : r
-        );
-        saveToStorage({ ...s, guideResources });
-        return { guideResources };
-      });
-    },
-    unassignResource: (resourceId) => {
-      set((s) => {
-        const guideResources = s.guideResources.map((r) =>
-          r.id === resourceId
-            ? { ...r, assignedPlanId: null, assignedTimeSlotId: null, status: 'available' as const }
-            : r
-        );
-        saveToStorage({ ...s, guideResources });
-        return { guideResources };
-      });
-    },
+    addCongestionAlert: da.addCongestionAlert,
+    resolveCongestionAlert: da.resolveCongestionAlert,
+    removeCongestionAlert: da.removeCongestionAlert,
+    updateAlertProcessingStatus: da.updateAlertProcessingStatus,
+    setAlertRecommendedRoute: da.setAlertRecommendedRoute,
 
-    addAlternativeRoute: (route) => {
-      const newRoute: AlternativeRoute = { ...route, id: uid(), createdAt: Date.now() };
-      set((s) => {
-        const alternativeRoutes = [...s.alternativeRoutes, newRoute];
-        saveToStorage({ ...s, alternativeRoutes });
-        return { alternativeRoutes };
-      });
-    },
-    updateAlternativeRoute: (id, updates) => {
-      set((s) => {
-        const alternativeRoutes = s.alternativeRoutes.map((r) =>
-          r.id === id ? { ...r, ...updates } : r
-        );
-        saveToStorage({ ...s, alternativeRoutes });
-        return { alternativeRoutes };
-      });
-    },
-    removeAlternativeRoute: (id) => {
-      set((s) => {
-        const alternativeRoutes = s.alternativeRoutes.filter((r) => r.id !== id);
-        saveToStorage({ ...s, alternativeRoutes });
-        return { alternativeRoutes };
-      });
-    },
+    addDispatchRecord: da.addDispatchRecord,
+    removeDispatchRecord: da.removeDispatchRecord,
 
-    addCongestionAlert: (alert) => {
-      const newAlert: CongestionAlert = {
-        ...alert,
-        id: uid(),
-        timestamp: Date.now(),
-        processingStatus: alert.processingStatus || 'pending',
-        recommendedRouteId: alert.recommendedRouteId || null,
-        dispatchRecordIds: alert.dispatchRecordIds || [],
-        processedAt: alert.processedAt || null,
-        handledBy: alert.handledBy || null,
-      };
-      set((s) => {
-        const congestionAlerts = [newAlert, ...s.congestionAlerts];
-        saveToStorage({ ...s, congestionAlerts });
-        return { congestionAlerts };
-      });
-      if (get().autoDispatchConfig.enabled) {
-        const config = get().autoDispatchConfig;
-        const shouldAutoProcess =
-          (newAlert.level === 'critical' && config.autoTriggerCritical) ||
-          (newAlert.level === 'warning' && config.autoTriggerWarning);
-        if (shouldAutoProcess) {
-          setTimeout(() => get().executeAutoDispatchWorkflow(newAlert.id), 100);
-        }
-      }
-    },
-    resolveCongestionAlert: (id) => {
-      set((s) => {
-        const congestionAlerts = s.congestionAlerts.map((a) =>
-          a.id === id ? { ...a, resolved: true, processingStatus: 'resolved' as const, processedAt: Date.now() } : a
-        );
-        saveToStorage({ ...s, congestionAlerts });
-        return { congestionAlerts };
-      });
-    },
-    removeCongestionAlert: (id) => {
-      set((s) => {
-        const congestionAlerts = s.congestionAlerts.filter((a) => a.id !== id);
-        saveToStorage({ ...s, congestionAlerts });
-        return { congestionAlerts };
-      });
-    },
-    updateAlertProcessingStatus: (id, status) => {
-      set((s) => {
-        const congestionAlerts = s.congestionAlerts.map((a) =>
-          a.id === id ? { ...a, processingStatus: status, processedAt: status === 'resolved' ? Date.now() : a.processedAt } : a
-        );
-        saveToStorage({ ...s, congestionAlerts });
-        return { congestionAlerts };
-      });
-    },
-    setAlertRecommendedRoute: (alertId, routeId) => {
-      set((s) => {
-        const congestionAlerts = s.congestionAlerts.map((a) =>
-          a.id === alertId ? { ...a, recommendedRouteId: routeId } : a
-        );
-        saveToStorage({ ...s, congestionAlerts });
-        return { congestionAlerts };
-      });
-    },
+    addResourceSnapshot: ra.addResourceSnapshot,
+    captureResourceSnapshot: ra.captureResourceSnapshot,
 
-    addDispatchRecord: (record) => {
-      const newRecord: DispatchRecord = { ...record, id: uid(), timestamp: Date.now() };
-      set((s) => {
-        const dispatchRecords = [newRecord, ...s.dispatchRecords];
-        let congestionAlerts = s.congestionAlerts;
-        if (newRecord.alertId) {
-          congestionAlerts = s.congestionAlerts.map((a) =>
-            a.id === newRecord.alertId
-              ? { ...a, dispatchRecordIds: [...a.dispatchRecordIds, newRecord.id] }
-              : a
-          );
-        }
-        saveToStorage({ ...s, dispatchRecords, congestionAlerts });
-        return { dispatchRecords, congestionAlerts };
-      });
-      return newRecord;
-    },
-    removeDispatchRecord: (id) => {
-      set((s) => {
-        const dispatchRecords = s.dispatchRecords.filter((r) => r.id !== id);
-        const congestionAlerts = s.congestionAlerts.map((a) => ({
-          ...a,
-          dispatchRecordIds: a.dispatchRecordIds.filter((rid) => rid !== id),
-        }));
-        saveToStorage({ ...s, dispatchRecords, congestionAlerts });
-        return { dispatchRecords, congestionAlerts };
-      });
-    },
+    updateAutoDispatchConfig: da.updateAutoDispatchConfig,
 
-    addResourceSnapshot: (snapshot) => {
-      const newSnapshot: ResourceOccupancySnapshot = { ...snapshot, id: uid(), timestamp: Date.now() };
-      set((s) => {
-        const resourceSnapshots = [...s.resourceSnapshots, newSnapshot];
-        saveToStorage({ ...s, resourceSnapshots });
-        return { resourceSnapshots };
-      });
-    },
-    captureResourceSnapshot: (resourceType) => {
-      const s = get();
-      const resources = s.guideResources.filter((r) => r.type === resourceType);
-      const totalCount = resources.length;
-      const availableCount = resources.filter((r) => r.status === 'available').length;
-      const assignedCount = resources.filter((r) => r.status === 'assigned').length;
-      const busyCount = resources.filter((r) => r.status === 'busy').length;
-      const restCount = resources.filter((r) => r.status === 'rest').length;
-      const occupancyRate = totalCount > 0 ? Math.round(((totalCount - availableCount) / totalCount) * 100) : 0;
-      s.addResourceSnapshot({ resourceType, totalCount, availableCount, assignedCount, busyCount, restCount, occupancyRate });
-    },
+    checkAndGenerateCongestionAlerts: da.checkAndGenerateCongestionAlerts,
 
-    updateAutoDispatchConfig: (config) => {
-      set((s) => {
-        const autoDispatchConfig = { ...s.autoDispatchConfig, ...config };
-        saveToStorage({ ...s, autoDispatchConfig });
-        return { autoDispatchConfig };
-      });
-    },
+    autoProcessAlert: da.autoProcessAlert,
+    recommendRouteForAlert: da.recommendRouteForAlert,
+    autoDispatchResources: da.autoDispatchResources,
+    executeAutoDispatchWorkflow: da.executeAutoDispatchWorkflow,
 
-    checkAndGenerateCongestionAlerts: () => {
-      const s = get();
-      const existingUnresolved = new Set(
-        s.congestionAlerts.filter((a) => !a.resolved).map((a) => a.hallId)
-      );
-      for (const cap of s.hallCapacities) {
-        const hall = s.halls.find((h) => h.id === cap.hallId);
-        const hallName = hall?.name || '未知展厅';
-        if (cap.status === 'critical' && !existingUnresolved.has(cap.hallId)) {
-          get().addCongestionAlert({
-            hallId: cap.hallId,
-            level: 'critical',
-            message: `${hallName}当前人数接近最大容纳量(${cap.currentVisitors}/${cap.maxCapacity})，存在严重拥堵风险`,
-            resolved: false,
-            suggestions: ['引导观众先参观其他展厅', '增加该区域志愿者', '启动替代导览路线'],
-            processingStatus: 'pending',
-            recommendedRouteId: null,
-            dispatchRecordIds: [],
-            processedAt: null,
-            handledBy: null,
-          });
-        } else if (cap.status === 'warning' && !existingUnresolved.has(cap.hallId)) {
-          get().addCongestionAlert({
-            hallId: cap.hallId,
-            level: 'warning',
-            message: `${hallName}人流量较高(${cap.currentVisitors}/${cap.maxCapacity})，请关注后续变化`,
-            resolved: false,
-            suggestions: ['准备分流预案', '提醒讲解员控制参观节奏'],
-            processingStatus: 'pending',
-            recommendedRouteId: null,
-            dispatchRecordIds: [],
-            processedAt: null,
-            handledBy: null,
-          });
-        }
-      }
-    },
-
-    autoProcessAlert: (alertId) => {
-      const s = get();
-      const alert = s.congestionAlerts.find((a) => a.id === alertId);
-      if (!alert || alert.resolved) return false;
-      s.updateAlertProcessingStatus(alertId, 'auto_processing');
-      try {
-        if (s.autoDispatchConfig.autoRecommendRoute) {
-          s.recommendRouteForAlert(alertId);
-        }
-        s.autoDispatchResources(alertId);
-        const updated = s.congestionAlerts.find((a) => a.id === alertId);
-        if (updated) {
-          if (updated.recommendedRouteId && updated.dispatchRecordIds.length > 0) {
-            s.updateAlertProcessingStatus(alertId, 'resources_dispatched');
-          } else if (updated.recommendedRouteId) {
-            s.updateAlertProcessingStatus(alertId, 'route_recommended');
-          }
-        }
-        return true;
-      } catch {
-        s.updateAlertProcessingStatus(alertId, 'pending');
-        return false;
-      }
-    },
-
-    recommendRouteForAlert: (alertId) => {
-      const s = get();
-      const alert = s.congestionAlerts.find((a) => a.id === alertId);
-      if (!alert) return null;
-      const hallExhibitIds = s.exhibits
-        .filter((e) => e.hallId === alert.hallId)
-        .map((e) => e.id);
-      const matchingRoutes = s.alternativeRoutes.filter((route) => {
-        const routeExhibits = route.stopIds;
-        const avoidsCongestedHall = !routeExhibits.some((id) => hallExhibitIds.includes(id));
-        const audienceMatch = true;
-        return avoidsCongestedHall && audienceMatch;
-      });
-      if (matchingRoutes.length > 0) {
-        const route = matchingRoutes[0];
-        s.setAlertRecommendedRoute(alertId, route.id);
-        s.addDispatchRecord({
-          alertId,
-          hallId: alert.hallId,
-          actionType: 'recommend_route',
-          resourceId: null,
-          resourceType: null,
-          routeId: route.id,
-          timeSlotId: null,
-          description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}拥堵，自动推荐替代路线"${route.name}"`,
-          operator: 'system',
-          result: 'success',
-        });
-        return route;
-      }
-      return null;
-    },
-
-    autoDispatchResources: (alertId) => {
-      const s = get();
-      const alert = s.congestionAlerts.find((a) => a.id === alertId);
-      if (!alert) return [];
-      const config = s.autoDispatchConfig;
-      const cap = s.hallCapacities.find((c) => c.hallId === alert.hallId);
-      const usagePercent = cap && cap.maxCapacity > 0 ? (cap.currentVisitors / cap.maxCapacity) * 100 : 0;
-      const ongoingSlot = s.timeSlots.find((t) => t.status === 'ongoing');
-      const timeSlotId = ongoingSlot?.id || s.timeSlots[0]?.id || null;
-      const firstPlan = s.plans[0];
-      const dispatched: DispatchRecord[] = [];
-
-      if (config.autoAssignVolunteer && usagePercent >= config.volunteerDispatchThreshold) {
-        const availableVolunteer = s.guideResources.find((r) => r.type === 'volunteer' && r.status === 'available');
-        if (availableVolunteer && firstPlan && timeSlotId) {
-          s.assignResource(availableVolunteer.id, firstPlan.id, timeSlotId);
-          const record = s.addDispatchRecord({
-            alertId,
-            hallId: alert.hallId,
-            actionType: 'auto_assign_volunteer',
-            resourceId: availableVolunteer.id,
-            resourceType: 'volunteer',
-            routeId: null,
-            timeSlotId,
-            description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}拥堵，自动分配志愿者"${availableVolunteer.name}"前往支援`,
-            operator: 'system',
-            result: 'success',
-          });
-          if (record) dispatched.push(record);
-          s.captureResourceSnapshot('volunteer');
-        }
-      }
-
-      if (config.autoAssignGuide && usagePercent >= config.guideDispatchThreshold) {
-        const availableGuide = s.guideResources.find((r) => r.type === 'guide' && r.status === 'available');
-        if (availableGuide && firstPlan && timeSlotId) {
-          s.assignResource(availableGuide.id, firstPlan.id, timeSlotId);
-          const record = s.addDispatchRecord({
-            alertId,
-            hallId: alert.hallId,
-            actionType: 'auto_assign_guide',
-            resourceId: availableGuide.id,
-            resourceType: 'guide',
-            routeId: null,
-            timeSlotId,
-            description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}严重拥堵，自动调配讲解员"${availableGuide.name}"协助疏导`,
-            operator: 'system',
-            result: 'success',
-          });
-          if (record) dispatched.push(record);
-          s.captureResourceSnapshot('guide');
-        }
-      }
-
-      if (config.autoAssignAudioDevice && usagePercent >= config.audioDeviceDispatchThreshold) {
-        const availableAudio = s.guideResources.find((r) => r.type === 'audio_device' && r.status === 'available');
-        if (availableAudio && firstPlan && timeSlotId) {
-          s.assignResource(availableAudio.id, firstPlan.id, timeSlotId);
-          const record = s.addDispatchRecord({
-            alertId,
-            hallId: alert.hallId,
-            actionType: 'auto_assign_audio',
-            resourceId: availableAudio.id,
-            resourceType: 'audio_device',
-            routeId: null,
-            timeSlotId,
-            description: `${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}人流集中，投放语音设备"${availableAudio.name}"支持自助导览`,
-            operator: 'system',
-            result: 'success',
-          });
-          if (record) dispatched.push(record);
-          s.captureResourceSnapshot('audio_device');
-        }
-      }
-
-      return dispatched;
-    },
-
-    executeAutoDispatchWorkflow: (alertId) => {
-      const s = get();
-      const alert = s.congestionAlerts.find((a) => a.id === alertId);
-      if (!alert || alert.resolved) return;
-      s.addDispatchRecord({
-        alertId,
-        hallId: alert.hallId,
-        actionType: 'auto_trigger',
-        resourceId: null,
-        resourceType: null,
-        routeId: null,
-        timeSlotId: null,
-        description: `检测到${s.halls.find((h) => h.id === alert.hallId)?.name || '展厅'}${alert.level === 'critical' ? '严重拥堵' : '人流量预警'}，启动自动调度流程`,
-        operator: 'system',
-        result: 'success',
-      });
-      s.autoProcessAlert(alertId);
-    },
-
-    exportDispatchPlan: () => {
-      const s = get();
-      const totalExpectedVisitors = s.timeSlots.reduce((sum, t) => sum + t.expectedVisitors, 0);
-      const totalActualVisitors = s.timeSlots.reduce((sum, t) => sum + t.actualVisitors, 0);
-      const pendingAlerts = s.congestionAlerts.filter((a) => !a.resolved && (a.processingStatus === 'pending' || a.processingStatus === 'auto_processing')).length;
-      const autoProcessedAlerts = s.congestionAlerts.filter((a) => a.handledBy === 'system').length;
-      const resolvedAlerts = s.congestionAlerts.filter((a) => a.resolved).length;
-      const totalDispatches = s.dispatchRecords.length;
-      const autoDispatches = s.dispatchRecords.filter((r) => r.operator === 'system').length;
-      return {
-        exportedAt: Date.now(),
-        date: new Date().toISOString().split('T')[0],
-        timeSlots: s.timeSlots,
-        hallCapacities: s.hallCapacities.map((c) => ({
-          ...c,
-          hallName: s.halls.find((h) => h.id === c.hallId)?.name || c.hallId,
-        })),
-        resources: s.guideResources,
-        alternativeRoutes: s.alternativeRoutes,
-        alerts: s.congestionAlerts,
-        dispatchRecords: s.dispatchRecords,
-        resourceSnapshots: s.resourceSnapshots,
-        autoDispatchConfig: s.autoDispatchConfig,
-        summary: {
-          totalExpectedVisitors,
-          totalActualVisitors,
-          normalHalls: s.hallCapacities.filter((h) => h.status === 'normal').length,
-          warningHalls: s.hallCapacities.filter((h) => h.status === 'warning').length,
-          criticalHalls: s.hallCapacities.filter((h) => h.status === 'critical').length,
-          availableResources: s.guideResources.filter((r) => r.status === 'available').length,
-          activeAlerts: s.congestionAlerts.filter((a) => !a.resolved).length,
-          pendingAlerts,
-          autoProcessedAlerts,
-          resolvedAlerts,
-          totalDispatches,
-          autoDispatches,
-        },
-      };
-    },
+    exportDispatchPlan: da.exportDispatchPlan,
   };
-});
+}

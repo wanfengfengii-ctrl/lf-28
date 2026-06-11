@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import { GripVertical, X, Play, Sparkles } from 'lucide-react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
 import type { TourStop } from '@/types';
 
 interface StopCardProps {
@@ -13,16 +13,16 @@ interface StopCardProps {
 }
 
 export default function StopCard({ stop, index, recommendedIndex }: StopCardProps) {
-  const playOrderMode = useMuseumStore((s) => s.playOrderMode);
+  const playOrderMode = useRoutePlanStore((s) => s.playOrderMode);
   const isRecommendedMode = playOrderMode === 'recommended';
-  const exhibits = useMuseumStore((s) => s.exhibits);
-  const halls = useMuseumStore((s) => s.halls);
-  const activePlanId = useMuseumStore((s) => s.activePlanId);
-  const playingStopIndex = useMuseumStore((s) => s.playingStopIndex);
-  const setPlayingStopIndex = useMuseumStore((s) => s.setPlayingStopIndex);
-  const setIsPlaying = useMuseumStore((s) => s.setIsPlaying);
-  const removeStopFromPlan = useMuseumStore((s) => s.removeStopFromPlan);
-  const updateStopDuration = useMuseumStore((s) => s.updateStopDuration);
+  const exhibits = useRoutePlanStore((s) => s.exhibits);
+  const halls = useRoutePlanStore((s) => s.halls);
+  const activePlanId = useRoutePlanStore((s) => s.activePlanId);
+  const playingStopIndex = useRoutePlanStore((s) => s.playingStopIndex);
+  const setPlayingStopIndex = useRoutePlanStore((s) => s.setPlayingStopIndex);
+  const setIsPlaying = useRoutePlanStore((s) => s.setIsPlaying);
+  const removeStopFromPlan = useRoutePlanStore((s) => s.removeStopFromPlan);
+  const updateStopDuration = useRoutePlanStore((s) => s.updateStopDuration);
 
   const [durationInput, setDurationInput] = useState<string>(stop.duration.toString());
 

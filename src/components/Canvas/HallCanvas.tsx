@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/museumStore';
 import HallNode from './HallNode';
 import ConnectionLine from './ConnectionLine';
 import type { HallConnection } from '@/types';
@@ -27,14 +27,14 @@ const PRIORITY_OPTIONS = [
 ];
 
 export default function HallCanvas() {
-  const halls = useMuseumStore((s) => s.halls);
-  const exhibits = useMuseumStore((s) => s.exhibits);
-  const connections = useMuseumStore((s) => s.connections);
-  const plans = useMuseumStore((s) => s.plans);
-  const activePlanId = useMuseumStore((s) => s.activePlanId);
-  const addConnection = useMuseumStore((s) => s.addConnection);
-  const removeConnection = useMuseumStore((s) => s.removeConnection);
-  const updateConnectionPriority = useMuseumStore((s) => s.updateConnectionPriority);
+  const halls = useRoutePlanStore((s) => s.halls);
+  const exhibits = useRoutePlanStore((s) => s.exhibits);
+  const connections = useRoutePlanStore((s) => s.connections);
+  const plans = useRoutePlanStore((s) => s.plans);
+  const activePlanId = useRoutePlanStore((s) => s.activePlanId);
+  const addConnection = useRoutePlanStore((s) => s.addConnection);
+  const removeConnection = useRoutePlanStore((s) => s.removeConnection);
+  const updateConnectionPriority = useRoutePlanStore((s) => s.updateConnectionPriority);
 
   const [selectedHallId, setSelectedHallId] = useState<string | null>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);

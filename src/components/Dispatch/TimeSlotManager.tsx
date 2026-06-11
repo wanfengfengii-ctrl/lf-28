@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Edit2, Trash2, Clock, Users, Save, X, Minus } from 'lucide-react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useDispatchAlertStore } from '@/store/dispatchAlertStore';
+import { useUIStore } from '@/store/shared';
 import { SLOT_STATUS_LABELS } from '@/types';
 import type { TimeSlot } from '@/types';
 
@@ -31,11 +32,11 @@ const initialAddForm: AddFormState = {
 };
 
 export default function TimeSlotManager() {
-  const timeSlots = useMuseumStore((s) => s.timeSlots);
-  const addTimeSlot = useMuseumStore((s) => s.addTimeSlot);
-  const updateTimeSlot = useMuseumStore((s) => s.updateTimeSlot);
-  const removeTimeSlot = useMuseumStore((s) => s.removeTimeSlot);
-  const showConfirmModal = useMuseumStore((s) => s.showConfirmModal);
+  const timeSlots = useDispatchAlertStore((s) => s.timeSlots);
+  const addTimeSlot = useDispatchAlertStore((s) => s.addTimeSlot);
+  const updateTimeSlot = useDispatchAlertStore((s) => s.updateTimeSlot);
+  const removeTimeSlot = useDispatchAlertStore((s) => s.removeTimeSlot);
+  const showConfirmModal = useUIStore((s) => s.showConfirmModal);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState<AddFormState>(initialAddForm);

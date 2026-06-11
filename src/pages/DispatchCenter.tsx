@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useDispatchAlertStore } from '@/store/museumStore';
 import DispatchOverview from '@/components/Dispatch/DispatchOverview';
 import TimeSlotManager from '@/components/Dispatch/TimeSlotManager';
 import HallCapacityMonitor from '@/components/Dispatch/HallCapacityMonitor';
@@ -27,7 +27,7 @@ const TABS: Array<{ id: TabType; label: string; icon: React.ReactNode }> = [
 
 export default function DispatchCenter() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const exportDispatchPlan = useMuseumStore((s) => s.exportDispatchPlan);
+  const exportDispatchPlan = useDispatchAlertStore((s) => s.exportDispatchPlan);
 
   function handleExport() {
     const data = exportDispatchPlan();

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/museumStore';
 import {
   Clock,
   AlertTriangle,
@@ -21,7 +21,7 @@ function formatDuration(seconds: number) {
 }
 
 export default function StatsPanel() {
-  const getValidationReport = useMuseumStore((s) => s.getValidationReport);
+  const getValidationReport = useRoutePlanStore((s) => s.getValidationReport);
   const report = getValidationReport();
 
   const [showDetails, setShowDetails] = useState<Record<string, boolean>>({

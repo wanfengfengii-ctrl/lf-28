@@ -1,9 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useMuseumStore } from '@/store/museumStore';
+import { useUIStore } from '@/store/shared';
 
 export default function ConfirmModal() {
-  const confirmModal = useMuseumStore((s) => s.confirmModal);
-  const closeConfirmModal = useMuseumStore((s) => s.closeConfirmModal);
+  const confirmModal = useUIStore((s) => s.confirmModal);
+  const closeConfirmModal = useUIStore((s) => s.closeConfirmModal);
 
   return (
     <AnimatePresence>

@@ -13,24 +13,24 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { Plus, Sparkles, ListOrdered, Route as RouteIcon, Check, X } from 'lucide-react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
 import StopCard from './StopCard';
 
 export default function StopList() {
-  const activePlanId = useMuseumStore((s) => s.activePlanId);
-  const plans = useMuseumStore((s) => s.plans);
-  const exhibits = useMuseumStore((s) => s.exhibits);
-  const halls = useMuseumStore((s) => s.halls);
-  const reorderStops = useMuseumStore((s) => s.reorderStops);
-  const addStopToPlan = useMuseumStore((s) => s.addStopToPlan);
-  const playOrderMode = useMuseumStore((s) => s.playOrderMode);
-  const recommendedStops = useMuseumStore((s) => s.recommendedStops);
-  const setPlayOrderMode = useMuseumStore((s) => s.setPlayOrderMode);
-  const generateAndApplyRecommendedRoute = useMuseumStore(
+  const activePlanId = useRoutePlanStore((s) => s.activePlanId);
+  const plans = useRoutePlanStore((s) => s.plans);
+  const exhibits = useRoutePlanStore((s) => s.exhibits);
+  const halls = useRoutePlanStore((s) => s.halls);
+  const reorderStops = useRoutePlanStore((s) => s.reorderStops);
+  const addStopToPlan = useRoutePlanStore((s) => s.addStopToPlan);
+  const playOrderMode = useRoutePlanStore((s) => s.playOrderMode);
+  const recommendedStops = useRoutePlanStore((s) => s.recommendedStops);
+  const setPlayOrderMode = useRoutePlanStore((s) => s.setPlayOrderMode);
+  const generateAndApplyRecommendedRoute = useRoutePlanStore(
     (s) => s.generateAndApplyRecommendedRoute
   );
-  const clearRecommendedRoute = useMuseumStore((s) => s.clearRecommendedRoute);
-  const getEffectiveStops = useMuseumStore((s) => s.getEffectiveStops);
+  const clearRecommendedRoute = useRoutePlanStore((s) => s.clearRecommendedRoute);
+  const getEffectiveStops = useRoutePlanStore((s) => s.getEffectiveStops);
 
   const [showPicker, setShowPicker] = useState(false);
 

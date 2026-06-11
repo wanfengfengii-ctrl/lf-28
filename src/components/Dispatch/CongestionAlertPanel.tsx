@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useDispatchAlertStore } from '@/store/dispatchAlertStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
+import { useResourceAllocationStore } from '@/store/resourceAllocationStore';
 import {
   AlertTriangle,
   AlertCircle,
@@ -68,23 +70,23 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
 };
 
 export default function CongestionAlertPanel() {
-  const congestionAlerts = useMuseumStore((s) => s.congestionAlerts);
-  const halls = useMuseumStore((s) => s.halls);
-  const exhibits = useMuseumStore((s) => s.exhibits);
-  const alternativeRoutes = useMuseumStore((s) => s.alternativeRoutes);
-  const plans = useMuseumStore((s) => s.plans);
-  const dispatchRecords = useMuseumStore((s) => s.dispatchRecords);
-  const guideResources = useMuseumStore((s) => s.guideResources);
-  const autoDispatchConfig = useMuseumStore((s) => s.autoDispatchConfig);
-  const addAlternativeRoute = useMuseumStore((s) => s.addAlternativeRoute);
-  const updateAlternativeRoute = useMuseumStore((s) => s.updateAlternativeRoute);
-  const removeAlternativeRoute = useMuseumStore((s) => s.removeAlternativeRoute);
-  const resolveCongestionAlert = useMuseumStore((s) => s.resolveCongestionAlert);
-  const removeCongestionAlert = useMuseumStore((s) => s.removeCongestionAlert);
-  const updateAutoDispatchConfig = useMuseumStore((s) => s.updateAutoDispatchConfig);
-  const executeAutoDispatchWorkflow = useMuseumStore((s) => s.executeAutoDispatchWorkflow);
-  const recommendRouteForAlert = useMuseumStore((s) => s.recommendRouteForAlert);
-  const autoDispatchResources = useMuseumStore((s) => s.autoDispatchResources);
+  const congestionAlerts = useDispatchAlertStore((s) => s.congestionAlerts);
+  const halls = useRoutePlanStore((s) => s.halls);
+  const exhibits = useRoutePlanStore((s) => s.exhibits);
+  const alternativeRoutes = useDispatchAlertStore((s) => s.alternativeRoutes);
+  const plans = useRoutePlanStore((s) => s.plans);
+  const dispatchRecords = useDispatchAlertStore((s) => s.dispatchRecords);
+  const guideResources = useResourceAllocationStore((s) => s.guideResources);
+  const autoDispatchConfig = useDispatchAlertStore((s) => s.autoDispatchConfig);
+  const addAlternativeRoute = useDispatchAlertStore((s) => s.addAlternativeRoute);
+  const updateAlternativeRoute = useDispatchAlertStore((s) => s.updateAlternativeRoute);
+  const removeAlternativeRoute = useDispatchAlertStore((s) => s.removeAlternativeRoute);
+  const resolveCongestionAlert = useDispatchAlertStore((s) => s.resolveCongestionAlert);
+  const removeCongestionAlert = useDispatchAlertStore((s) => s.removeCongestionAlert);
+  const updateAutoDispatchConfig = useDispatchAlertStore((s) => s.updateAutoDispatchConfig);
+  const executeAutoDispatchWorkflow = useDispatchAlertStore((s) => s.executeAutoDispatchWorkflow);
+  const recommendRouteForAlert = useDispatchAlertStore((s) => s.recommendRouteForAlert);
+  const autoDispatchResources = useDispatchAlertStore((s) => s.autoDispatchResources);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState<AddRouteForm>(initialAddForm);

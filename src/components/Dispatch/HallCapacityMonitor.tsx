@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
+import { useDispatchAlertStore } from '@/store/dispatchAlertStore';
 import {
   Users,
   Edit2,
@@ -20,10 +21,10 @@ interface EditFormState {
 }
 
 export default function HallCapacityMonitor() {
-  const halls = useMuseumStore((s) => s.halls);
-  const hallCapacities = useMuseumStore((s) => s.hallCapacities);
-  const updateHallCapacity = useMuseumStore((s) => s.updateHallCapacity);
-  const updateHallVisitors = useMuseumStore((s) => s.updateHallVisitors);
+  const halls = useRoutePlanStore((s) => s.halls);
+  const hallCapacities = useDispatchAlertStore((s) => s.hallCapacities);
+  const updateHallCapacity = useDispatchAlertStore((s) => s.updateHallCapacity);
+  const updateHallVisitors = useDispatchAlertStore((s) => s.updateHallVisitors);
 
   const [editingHallId, setEditingHallId] = useState<string | null>(null);
   const [editForms, setEditForms] = useState<Record<string, EditFormState>>({});

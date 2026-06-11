@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Plus, ChevronDown } from 'lucide-react';
-import { useMuseumStore } from '@/store/museumStore';
+import { useRoutePlanStore } from '@/store/routePlanStore';
 import { AUDIENCE_LABELS, AUDIENCE_COLORS } from '@/types';
 import type { AudienceType } from '@/types';
 import StopList from './StopList';
@@ -9,9 +9,9 @@ import CreatePlanForm from './CreatePlanForm';
 const AUDIENCE_GROUP_ORDER: AudienceType[] = ['children', 'general', 'research'];
 
 export default function PlanPanel() {
-  const plans = useMuseumStore((s) => s.plans);
-  const activePlanId = useMuseumStore((s) => s.activePlanId);
-  const setActivePlan = useMuseumStore((s) => s.setActivePlan);
+  const plans = useRoutePlanStore((s) => s.plans);
+  const activePlanId = useRoutePlanStore((s) => s.activePlanId);
+  const setActivePlan = useRoutePlanStore((s) => s.setActivePlan);
 
   const [showForm, setShowForm] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
