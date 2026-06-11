@@ -2,16 +2,19 @@ import { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
-import { GripVertical, X, Play } from 'lucide-react';
+import { GripVertical, X, Play, Sparkles } from 'lucide-react';
 import { useMuseumStore } from '@/store/museumStore';
 import type { TourStop } from '@/types';
 
 interface StopCardProps {
   stop: TourStop;
   index: number;
+  recommendedIndex?: number;
 }
 
-export default function StopCard({ stop, index }: StopCardProps) {
+export default function StopCard({ stop, index, recommendedIndex }: StopCardProps) {
+  const playOrderMode = useMuseumStore((s) => s.playOrderMode);
+  const isRecommendedMode = playOrderMode === 'recommended';
   const exhibits = useMuseumStore((s) => s.exhibits);
   const halls = useMuseumStore((s) => s.halls);
   const activePlanId = useMuseumStore((s) => s.activePlanId);
@@ -38,7 +41,7 @@ export default function StopCard({ stop, index }: StopCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: stop.id });
+  } = useSortable({ id: stop.id, disabled: isRecommendedMode });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -83,24 +86,45 @@ export default function StopCard({ stop, index }: StopCardProps) {
       style={style}
       layout
       className={`flex items-center gap-2 rounded-lg bg-white px-3 py-2.5 shadow-sm border-l-[3px] ${
-        isPlaying ? 'border-l-amber-500 bg-amber-50' : 'border-l-museum-gold'
+        isPlaying
+          ? 'border-l-amber-500 bg-amber-50'
+          : isRecommendedMode
+          ? 'border-l-purple-400'
+          : 'border-l-museum-gold'
       } ${isDragging ? 'shadow-md' : ''}`}
     >
       <button
-        className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
+        className={`${
+          isRecommendedMode
+            ? 'text-slate-200 cursor-not-allowed'
+            : 'cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing'
+        }`}
+        {...(isRecommendedMode ? {} : attributes)}
+        {...(isRecommendedMode ? {} : listeners)}
+        disabled={isRecommendedMode}
       >
-        <GripVertical size={16} />
+        {isRecommendedMode ? <Sparkles size={16} /> : <GripVertical size={16} />}
       </button>
 
-      <span
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${
-          isPlaying ? 'bg-amber-500' : 'bg-museum-gold'
-        }`}
-      >
-        {index + 1}
-      </span>
+      <div className="flex shrink-0 flex-col items-center gap-0.5">
+        <span
+          className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold text-white ${
+            isPlaying
+              ? 'bg-amber-500'
+              : isRecommendedMode
+              ? 'bg-purple-500'
+              : 'bg-museum-gold'
+          }`}
+          title={isRecommendedMode ? '推荐顺序' : '编辑顺序'}
+        >
+          {index + 1}
+        </span>
+        {isRecommendedMode && recommendedIndex !== undefined && (
+          <span className="text-[9px] text-slate-400 leading-none tabular-nums">
+            原#{recommendedIndex + 1}
+          </span>
+        )}
+      </div>
 
       <button
         onClick={handleJumpToStop}

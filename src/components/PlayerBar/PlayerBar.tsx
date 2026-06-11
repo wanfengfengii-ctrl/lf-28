@@ -1,25 +1,27 @@
 import { useEffect, useRef } from 'react';
 import { useMuseumStore } from '@/store/museumStore';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Sparkles, ListOrdered } from 'lucide-react';
 
 export default function PlayerBar() {
-  const plans = useMuseumStore((s) => s.plans);
-  const activePlanId = useMuseumStore((s) => s.activePlanId);
+  const exhibits = useMuseumStore((s) => s.exhibits);
   const playingStopIndex = useMuseumStore((s) => s.playingStopIndex);
   const isPlaying = useMuseumStore((s) => s.isPlaying);
-  const exhibits = useMuseumStore((s) => s.exhibits);
   const togglePlay = useMuseumStore((s) => s.togglePlay);
   const setPlayingStopIndex = useMuseumStore((s) => s.setPlayingStopIndex);
   const setIsPlaying = useMuseumStore((s) => s.setIsPlaying);
+  const getEffectiveStops = useMuseumStore((s) => s.getEffectiveStops);
+  const playOrderMode = useMuseumStore((s) => s.playOrderMode);
+  const setPlayOrderMode = useMuseumStore((s) => s.setPlayOrderMode);
+  const activePlanId = useMuseumStore((s) => s.activePlanId);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activePlan = plans.find((p) => p.id === activePlanId);
-  const stops = activePlan?.stops ?? [];
+  const stops = getEffectiveStops();
   const currentIndex = playingStopIndex ?? -1;
   const currentStop = currentIndex >= 0 ? stops[currentIndex] : null;
   const currentExhibit = currentStop
     ? exhibits.find((e) => e.id === currentStop.exhibitId)
     : null;
+  const isRecommendedMode = playOrderMode === 'recommended';
 
   useEffect(() => {
     if (isPlaying && currentStop) {
@@ -51,7 +53,7 @@ export default function PlayerBar() {
     }
   };
 
-  if (!activePlan || stops.length === 0) {
+  if (!activePlanId || stops.length === 0) {
     return (
       <div className="h-14 flex items-center justify-center bg-museum-canvas border-t border-white/10">
         <span className="text-sm text-museum-slate-light">请选择一个方案并添加展品以开始播放</span>
@@ -61,14 +63,49 @@ export default function PlayerBar() {
 
   return (
     <div className="h-14 flex items-center gap-4 bg-museum-canvas border-t border-white/10 px-6">
+      <div className="flex items-center gap-2 mr-2">
+        <button
+          onClick={() => setPlayOrderMode('edit')}
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px transition-colors ${
+            !isRecommendedMode
+              ? 'bg-white/20 text-white'
+              : 'text-white/50 hover:text-white/70 hover:bg-white/10'
+          }`}
+          title="按编辑顺序播放"
+        >
+          <ListOrdered className="h-3 w-3" />
+          编辑
+        </button>
+        <button
+          onClick={() => setPlayOrderMode('recommended')}
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px transition-colors ${
+            isRecommendedMode
+              ? 'bg-museum-gold text-white'
+              : 'text-white/50 hover:text-white/70 hover:bg-white/10'
+          }`}
+          disabled={stops.length < 2}
+          title="按推荐顺序播放"
+        >
+          <Sparkles className="h-3 w-3" />
+          推荐
+        </button>
+      </div>
+
       <div className="flex flex-col min-w-0 flex-1">
         <span className="text-sm font-medium text-white truncate">
           {currentExhibit?.name ?? '未选择展品'}
         </span>
         {currentStop && (
-          <span className="text-xs text-museum-slate-light">
-            第 {currentIndex + 1} 站 / 共 {stops.length} 站
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-museum-slate-light">
+              第 {currentIndex + 1} 站 / 共 {stops.length} 站
+            </span>
+            {isRecommendedMode && (
+              <span className="text-[10px] bg-museum-gold/20 text-museum-gold px-1.5 rounded">
+                推荐顺序
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -105,7 +142,9 @@ export default function PlayerBar() {
       <div className="flex items-center gap-2 w-32">
         <div className="h-1.5 flex-1 rounded-full bg-white/10 overflow-hidden">
           <div
-            className="h-full rounded-full bg-museum-gold transition-all duration-300"
+            className={`h-full rounded-full transition-all duration-300 ${
+              isRecommendedMode ? 'bg-purple-400' : 'bg-museum-gold'
+            }`}
             style={{ width: `${stops.length > 0 ? ((currentIndex + 1) / stops.length) * 100 : 0}%` }}
           />
         </div>

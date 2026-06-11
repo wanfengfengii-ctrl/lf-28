@@ -1,4 +1,19 @@
-import type { TourPlan, HallConnection, Exhibit, Hall, ValidationResult, StatsInfo } from '@/types';
+import type {
+  TourPlan,
+  HallConnection,
+  Exhibit,
+  Hall,
+  ValidationResult,
+  StatsInfo,
+  TourStop,
+  ValidationCenterReport,
+  DuplicateDetail,
+  DisconnectionDetail,
+  JumpDetail,
+  RepeatedPathDetail,
+  RouteConfig,
+  ImportPreviewData,
+} from '@/types';
 
 export function validateStopUniqueness(plan: TourPlan): ValidationResult {
   const errors: string[] = [];
@@ -209,4 +224,245 @@ export function validateImportConfig(config: unknown): ValidationResult {
   }
 
   return { valid: errors.length === 0, errors, warnings };
+}
+
+function getConnectionPriority(
+  fromHallId: string,
+  toHallId: string,
+  connections: HallConnection[]
+): number {
+  const conn = connections.find(
+    (c) =>
+      (c.fromHallId === fromHallId && c.toHallId === toHallId) ||
+      (c.fromHallId === toHallId && c.toHallId === fromHallId)
+  );
+  return conn ? conn.priority : -1;
+}
+
+function hallsAreConnected(
+  fromHallId: string,
+  toHallId: string,
+  connections: HallConnection[]
+): boolean {
+  if (fromHallId === toHallId) return true;
+  return connections.some(
+    (c) =>
+      (c.fromHallId === fromHallId && c.toHallId === toHallId) ||
+      (c.fromHallId === toHallId && c.toHallId === fromHallId)
+  );
+}
+
+export function generateRecommendedRoute(
+  stops: TourStop[],
+  exhibits: Exhibit[],
+  connections: HallConnection[]
+): TourStop[] {
+  if (stops.length <= 2) return [...stops];
+
+  const stopExhibitMap = new Map(stops.map((s) => [s.id, exhibits.find((e) => e.id === s.exhibitId)]));
+  const stopHallMap = new Map(
+    stops.map((s) => {
+      const ex = stopExhibitMap.get(s.id);
+      return [s.id, ex?.hallId || ''];
+    })
+  );
+
+  const hallGroupedStops = new Map<string, TourStop[]>();
+  for (const stop of stops) {
+    const hallId = stopHallMap.get(stop.id) || '';
+    if (!hallGroupedStops.has(hallId)) {
+      hallGroupedStops.set(hallId, []);
+    }
+    hallGroupedStops.get(hallId)!.push(stop);
+  }
+
+  const hallIds = Array.from(hallGroupedStops.keys());
+  if (hallIds.length <= 1) return [...stops];
+
+  const visitedHalls = new Set<string>();
+  const orderedHallIds: string[] = [];
+
+  let currentHall = hallIds[0];
+  visitedHalls.add(currentHall);
+  orderedHallIds.push(currentHall);
+
+  while (visitedHalls.size < hallIds.length) {
+    const remainingHalls = hallIds.filter((h) => !visitedHalls.has(h));
+
+    let bestHall = remainingHalls[0];
+    let bestScore = -Infinity;
+
+    for (const nextHall of remainingHalls) {
+      const priority = getConnectionPriority(currentHall, nextHall, connections);
+      const connected = hallsAreConnected(currentHall, nextHall, connections);
+
+      let score = priority;
+      if (!connected) {
+        score -= 1000;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestHall = nextHall;
+      }
+    }
+
+    visitedHalls.add(bestHall);
+    orderedHallIds.push(bestHall);
+    currentHall = bestHall;
+  }
+
+  const result: TourStop[] = [];
+  for (const hallId of orderedHallIds) {
+    const hallStops = hallGroupedStops.get(hallId) || [];
+    for (const stop of hallStops) {
+      result.push(stop);
+    }
+  }
+
+  return result;
+}
+
+export function generateValidationCenterReport(
+  plan: TourPlan,
+  exhibits: Exhibit[],
+  halls: Hall[],
+  connections: HallConnection[]
+): ValidationCenterReport {
+  const totalDuration = plan.stops.reduce((sum, s) => sum + s.duration, 0);
+  const totalStops = plan.stops.length;
+
+  const duplicateMap = new Map<string, number[]>();
+  plan.stops.forEach((stop, idx) => {
+    if (!duplicateMap.has(stop.exhibitId)) {
+      duplicateMap.set(stop.exhibitId, []);
+    }
+    duplicateMap.get(stop.exhibitId)!.push(idx);
+  });
+
+  const duplicateExhibits: DuplicateDetail[] = Array.from(duplicateMap.entries())
+    .filter(([, indices]) => indices.length > 1)
+    .map(([exhibitId, indices]) => {
+      const ex = exhibits.find((e) => e.id === exhibitId);
+      return {
+        exhibitId,
+        exhibitName: ex?.name || exhibitId,
+        indices,
+      };
+    });
+
+  const disconnections: DisconnectionDetail[] = [];
+  const jumps: JumpDetail[] = [];
+
+  for (let i = 0; i < plan.stops.length - 1; i++) {
+    const currStop = plan.stops[i];
+    const nextStop = plan.stops[i + 1];
+    const currEx = exhibits.find((e) => e.id === currStop.exhibitId);
+    const nextEx = exhibits.find((e) => e.id === nextStop.exhibitId);
+
+    if (!currEx || !nextEx) continue;
+
+    if (currEx.hallId !== nextEx.hallId) {
+      const currHall = halls.find((h) => h.id === currEx.hallId);
+      const nextHall = halls.find((h) => h.id === nextEx.hallId);
+      const connected = hallsAreConnected(currEx.hallId, nextEx.hallId, connections);
+      const priority = getConnectionPriority(currEx.hallId, nextEx.hallId, connections);
+
+      if (!connected) {
+        disconnections.push({
+          fromStopIndex: i,
+          toStopIndex: i + 1,
+          fromExhibitName: currEx.name,
+          toExhibitName: nextEx.name,
+          fromHallName: currHall?.name || currEx.hallId,
+          toHallName: nextHall?.name || nextEx.hallId,
+          reason: `展厅"${currHall?.name || currEx.hallId}"与"${nextHall?.name || nextEx.hallId}"之间没有定义连接通道`,
+        });
+      } else if (priority >= 0 && priority < 3) {
+        jumps.push({
+          fromStopIndex: i,
+          toStopIndex: i + 1,
+          fromExhibitName: currEx.name,
+          toExhibitName: nextEx.name,
+          fromHallName: currHall?.name || currEx.hallId,
+          toHallName: nextHall?.name || nextEx.hallId,
+        });
+      }
+    }
+  }
+
+  const pathMap = new Map<string, RepeatedPathDetail>();
+  for (let i = 0; i < plan.stops.length - 1; i++) {
+    const currEx = exhibits.find((e) => e.id === plan.stops[i].exhibitId);
+    const nextEx = exhibits.find((e) => e.id === plan.stops[i + 1].exhibitId);
+    if (!currEx || !nextEx || currEx.hallId === nextEx.hallId) continue;
+
+    const rawKey = [currEx.hallId, nextEx.hallId];
+    const sortedKey = [...rawKey].sort().join('<->');
+    const currHall = halls.find((h) => h.id === rawKey[0]);
+    const nextHall = halls.find((h) => h.id === rawKey[1]);
+
+    if (!pathMap.has(sortedKey)) {
+      pathMap.set(sortedKey, {
+        fromHallName: currHall?.name || rawKey[0],
+        toHallName: nextHall?.name || rawKey[1],
+        count: 0,
+        occurrences: [],
+      });
+    }
+    const detail = pathMap.get(sortedKey)!;
+    detail.count++;
+    detail.occurrences.push({ fromIndex: i, toIndex: i + 1 });
+  }
+
+  const repeatedPaths: RepeatedPathDetail[] = Array.from(pathMap.values()).filter(
+    (d) => d.count > 1
+  );
+
+  const hasCriticalIssues = duplicateExhibits.length > 0 || disconnections.length > 0;
+  const hasWarnings = jumps.length > 0 || repeatedPaths.length > 0;
+
+  return {
+    totalDuration,
+    totalStops,
+    duplicateExhibits,
+    disconnections,
+    jumps,
+    repeatedPaths,
+    hasCriticalIssues,
+    hasWarnings,
+  };
+}
+
+export function generateImportPreviewData(
+  config: RouteConfig,
+  rawJson: string
+): ImportPreviewData {
+  const validation = validateImportConfig(config);
+
+  const planValidationReports = config.plans.map((plan) => ({
+    planName: plan.name,
+    report: generateValidationCenterReport(
+      plan,
+      config.exhibits,
+      config.halls,
+      config.connections
+    ),
+  }));
+
+  const totalStops = config.plans.reduce((sum, p) => sum + p.stops.length, 0);
+
+  return {
+    config,
+    rawJson,
+    validation,
+    planValidationReports,
+    summary: {
+      hallsCount: config.halls.length,
+      exhibitsCount: config.exhibits.length,
+      connectionsCount: config.connections.length,
+      plansCount: config.plans.length,
+      totalStops,
+    },
+  };
 }

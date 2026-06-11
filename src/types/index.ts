@@ -25,6 +25,8 @@ export interface HallConnection {
 
 export type AudienceType = 'children' | 'general' | 'research';
 
+export type PlayOrderMode = 'edit' | 'recommended';
+
 export interface TourStop {
   id: string;
   exhibitId: string;
@@ -59,6 +61,66 @@ export interface StatsInfo {
   duplicateExhibits: string[];
   jumpPoints: string[];
   repeatedPaths: string[];
+}
+
+export interface DuplicateDetail {
+  exhibitId: string;
+  exhibitName: string;
+  indices: number[];
+}
+
+export interface DisconnectionDetail {
+  fromStopIndex: number;
+  toStopIndex: number;
+  fromExhibitName: string;
+  toExhibitName: string;
+  fromHallName: string;
+  toHallName: string;
+  reason: string;
+}
+
+export interface JumpDetail {
+  fromStopIndex: number;
+  toStopIndex: number;
+  fromExhibitName: string;
+  toExhibitName: string;
+  fromHallName: string;
+  toHallName: string;
+}
+
+export interface RepeatedPathDetail {
+  fromHallName: string;
+  toHallName: string;
+  count: number;
+  occurrences: Array<{ fromIndex: number; toIndex: number }>;
+}
+
+export interface ValidationCenterReport {
+  totalDuration: number;
+  totalStops: number;
+  duplicateExhibits: DuplicateDetail[];
+  disconnections: DisconnectionDetail[];
+  jumps: JumpDetail[];
+  repeatedPaths: RepeatedPathDetail[];
+  hasCriticalIssues: boolean;
+  hasWarnings: boolean;
+}
+
+export interface ImportPreviewData {
+  config: RouteConfig;
+  rawJson: string;
+  validation: ValidationResult;
+  planValidationReports: Array<{
+    planName: string;
+    report: ValidationCenterReport;
+  }>;
+  summary: {
+    hallsCount: number;
+    exhibitsCount: number;
+    connectionsCount: number;
+    plansCount: number;
+    totalStops: number;
+  };
 }
 
 export const AUDIENCE_LABELS: Record<AudienceType, string> = {

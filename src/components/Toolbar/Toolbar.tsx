@@ -1,11 +1,12 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useMuseumStore } from '@/store/museumStore';
-import { Building2, Upload, Download, RotateCcw } from 'lucide-react';
+import { Building2, Upload, Download, RotateCcw, AlertCircle } from 'lucide-react';
 
 export default function Toolbar() {
   const importConfig = useMuseumStore((s) => s.importConfig);
   const exportConfig = useMuseumStore((s) => s.exportConfig);
+  const previewImportConfig = useMuseumStore((s) => s.previewImportConfig);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImport = () => {
@@ -18,10 +19,16 @@ export default function Toolbar() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const result = importConfig(text);
-      if (!result.success) {
-        alert('导入失败：\n' + result.errors.join('\n'));
+      const preview = previewImportConfig(text);
+      if (!preview) {
+        const fallback = importConfig(text);
+        if (!fallback.success) {
+          alert('导入失败：\n' + fallback.errors.join('\n'));
+        }
       }
+    };
+    reader.onerror = () => {
+      alert('文件读取失败');
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -55,13 +62,23 @@ export default function Toolbar() {
       </div>
 
       <div className="flex items-center gap-1 ml-4">
-        <button
-          onClick={handleImport}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-white/90 hover:bg-white/15 transition-colors"
-        >
-          <Upload className="h-3.5 w-3.5" />
-          <span>导入</span>
-        </button>
+        <div className="relative group">
+          <button
+            onClick={handleImport}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-white/90 hover:bg-white/15 transition-colors"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            <span>导入</span>
+          </button>
+          <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50 w-48 rounded-md bg-white p-2 shadow-lg border border-slate-200">
+            <div className="flex items-start gap-1.5 p-1.5">
+              <AlertCircle className="h-3.5 w-3.5 text-museum-teal shrink-0 mt-0.5" />
+              <span className="text-[10px] text-slate-600 leading-snug">
+                导入前将预览校验结果，需通过校验才能覆盖
+              </span>
+            </div>
+          </div>
+        </div>
         <input
           ref={fileInputRef}
           type="file"

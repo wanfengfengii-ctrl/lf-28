@@ -1,7 +1,25 @@
 import { create } from 'zustand';
-import type { Hall, Exhibit, HallConnection, TourPlan, TourStop, StatsInfo, AudienceType } from '@/types';
+import type {
+  Hall,
+  Exhibit,
+  HallConnection,
+  TourPlan,
+  TourStop,
+  StatsInfo,
+  AudienceType,
+  PlayOrderMode,
+  ValidationCenterReport,
+  ImportPreviewData,
+  RouteConfig,
+} from '@/types';
 import { initialHalls, initialExhibits, initialConnections, initialPlans } from '@/utils/mockData';
-import { computeStats, validateImportConfig } from '@/utils/validation';
+import {
+  computeStats,
+  validateImportConfig,
+  generateRecommendedRoute,
+  generateValidationCenterReport,
+  generateImportPreviewData,
+} from '@/utils/validation';
 
 function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -43,6 +61,9 @@ interface MuseumState {
   activePlanId: string | null;
   playingStopIndex: number | null;
   isPlaying: boolean;
+  playOrderMode: PlayOrderMode;
+  recommendedStops: TourStop[] | null;
+  importPreview: ImportPreviewData | null;
   confirmModal: { open: boolean; title: string; message: string; onConfirm: () => void } | null;
 
   addHall: (hall: Omit<Hall, 'id'>) => void;
@@ -76,8 +97,20 @@ interface MuseumState {
   showConfirmModal: (title: string, message: string, onConfirm: () => void) => void;
   closeConfirmModal: () => void;
 
+  setPlayOrderMode: (mode: PlayOrderMode) => void;
+  generateAndApplyRecommendedRoute: () => boolean;
+  generateRecommendedRouteOnly: () => TourStop[] | null;
+  clearRecommendedRoute: () => void;
+  getEffectiveStops: () => TourStop[];
+
   getStats: () => StatsInfo;
   getActivePlan: () => TourPlan | undefined;
+  getValidationReport: () => ValidationCenterReport | null;
+
+  setImportPreview: (preview: ImportPreviewData | null) => void;
+  previewImportConfig: (json: string) => ImportPreviewData | null;
+  confirmImportAndOverride: () => { success: boolean; errors: string[] };
+  cancelImport: () => void;
 
   exportConfig: () => string;
   importConfig: (json: string) => { success: boolean; errors: string[] };
@@ -97,6 +130,9 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
     activePlanId: initial.plans[0]?.id || null,
     playingStopIndex: null,
     isPlaying: false,
+    playOrderMode: 'edit',
+    recommendedStops: null,
+    importPreview: null,
     confirmModal: null,
 
     addHall: (hall) => {
@@ -213,7 +249,7 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
       set((s) => {
         const plans = [...s.plans, newPlan];
         saveToStorage({ ...s, plans });
-        return { plans, activePlanId: newPlan.id };
+        return { plans, activePlanId: newPlan.id, recommendedStops: null, playOrderMode: 'edit' };
       });
     },
     deletePlan: (id) => {
@@ -221,7 +257,12 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
         const plans = s.plans.filter((p) => p.id !== id);
         const activePlanId = s.activePlanId === id ? (plans[0]?.id || null) : s.activePlanId;
         saveToStorage({ ...s, plans, activePlanId });
-        return { plans, activePlanId };
+        return {
+          plans,
+          activePlanId,
+          recommendedStops: s.activePlanId === id ? null : s.recommendedStops,
+          playOrderMode: s.activePlanId === id ? 'edit' : s.playOrderMode,
+        };
       });
     },
     duplicatePlan: (id) => {
@@ -239,11 +280,17 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
       set((s) => {
         const plans = [...s.plans, newPlan];
         saveToStorage({ ...s, plans });
-        return { plans, activePlanId: newPlan.id };
+        return { plans, activePlanId: newPlan.id, recommendedStops: null, playOrderMode: 'edit' };
       });
     },
     setActivePlan: (id) => {
-      set({ activePlanId: id, playingStopIndex: null, isPlaying: false });
+      set({
+        activePlanId: id,
+        playingStopIndex: null,
+        isPlaying: false,
+        recommendedStops: null,
+        playOrderMode: 'edit',
+      });
     },
     updatePlanName: (id, name) => {
       set((s) => {
@@ -302,7 +349,7 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
                     return { ...p, stops: [...p.stops, newStop], updatedAt: Date.now() };
                   });
                   saveToStorage({ ...s, plans });
-                  return { plans, confirmModal: null };
+                  return { plans, confirmModal: null, recommendedStops: null };
                 });
               }
             );
@@ -324,7 +371,7 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
           return { ...p, stops: [...p.stops, newStop], updatedAt: Date.now() };
         });
         saveToStorage({ ...s, plans });
-        return { plans };
+        return { plans, recommendedStops: null };
       });
     },
     removeStopFromPlan: (planId, stopId) => {
@@ -337,7 +384,7 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
           return { ...p, stops, updatedAt: Date.now() };
         });
         saveToStorage({ ...s, plans });
-        return { plans };
+        return { plans, recommendedStops: null };
       });
     },
     reorderStops: (planId, stops) => {
@@ -348,7 +395,7 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
           return { ...p, stops: reordered, updatedAt: Date.now() };
         });
         saveToStorage({ ...s, plans });
-        return { plans };
+        return { plans, recommendedStops: null };
       });
     },
     updateStopDuration: (planId, stopId, duration) => {
@@ -374,6 +421,58 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
       set({ confirmModal: { open: true, title, message, onConfirm } }),
     closeConfirmModal: () => set({ confirmModal: null }),
 
+    setPlayOrderMode: (mode) => {
+      const s = get();
+      if (mode === 'recommended' && !s.recommendedStops) {
+        const recommended = s.generateRecommendedRouteOnly();
+        set({ playOrderMode: mode, recommendedStops: recommended });
+      } else {
+        set({ playOrderMode: mode });
+      }
+    },
+    generateAndApplyRecommendedRoute: () => {
+      const s = get();
+      const plan = s.plans.find((p) => p.id === s.activePlanId);
+      if (!plan || plan.stops.length < 2) return false;
+
+      const recommended = generateRecommendedRoute(
+        plan.stops,
+        s.exhibits,
+        s.connections
+      );
+
+      set((state) => {
+        const plans = state.plans.map((p) => {
+          if (p.id !== state.activePlanId) return p;
+          const reordered = recommended.map((st, i) => ({ ...st, order: i + 1 }));
+          return { ...p, stops: reordered, updatedAt: Date.now() };
+        });
+        saveToStorage({ ...state, plans });
+        return {
+          plans,
+          recommendedStops: null,
+          playOrderMode: 'edit',
+        };
+      });
+      return true;
+    },
+    generateRecommendedRouteOnly: () => {
+      const s = get();
+      const plan = s.plans.find((p) => p.id === s.activePlanId);
+      if (!plan || plan.stops.length < 2) return null;
+      return generateRecommendedRoute(plan.stops, s.exhibits, s.connections);
+    },
+    clearRecommendedRoute: () => set({ recommendedStops: null, playOrderMode: 'edit' }),
+    getEffectiveStops: () => {
+      const s = get();
+      const plan = s.plans.find((p) => p.id === s.activePlanId);
+      if (!plan) return [];
+      if (s.playOrderMode === 'recommended' && s.recommendedStops) {
+        return s.recommendedStops;
+      }
+      return plan.stops;
+    },
+
     getStats: () => {
       const s = get();
       const plan = s.plans.find((p) => p.id === s.activePlanId);
@@ -384,6 +483,59 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
       const s = get();
       return s.plans.find((p) => p.id === s.activePlanId);
     },
+    getValidationReport: () => {
+      const s = get();
+      const plan = s.plans.find((p) => p.id === s.activePlanId);
+      if (!plan) return null;
+      return generateValidationCenterReport(plan, s.exhibits, s.halls, s.connections);
+    },
+
+    setImportPreview: (preview) => set({ importPreview: preview }),
+    previewImportConfig: (json) => {
+      try {
+        const config = JSON.parse(json);
+        const baseValid = validateImportConfig(config);
+        if (!baseValid.valid && baseValid.errors.some((e) =>
+          e.includes('缺少展厅') || e.includes('缺少展品') || e.includes('缺少连接') || e.includes('缺少方案')
+        )) {
+          return null;
+        }
+        const preview = generateImportPreviewData(config as RouteConfig, json);
+        set({ importPreview: preview });
+        return preview;
+      } catch {
+        return null;
+      }
+    },
+    confirmImportAndOverride: () => {
+      const s = get();
+      const preview = s.importPreview;
+      if (!preview) {
+        return { success: false, errors: ['没有待确认的导入预览数据'] };
+      }
+      const hasCritical = preview.planValidationReports.some((r) => r.report.hasCriticalIssues);
+      const hasBaseErrors = !preview.validation.valid;
+      if (hasBaseErrors || hasCritical) {
+        return { success: false, errors: ['存在严重校验问题，无法导入，请修正后再试'] };
+      }
+      const c = preview.config;
+      set((state) => {
+        const newState = {
+          halls: c.halls,
+          exhibits: c.exhibits,
+          connections: c.connections,
+          plans: c.plans,
+          activePlanId: c.plans[0]?.id || null,
+          importPreview: null,
+          recommendedStops: null,
+          playOrderMode: 'edit' as PlayOrderMode,
+        };
+        saveToStorage({ ...state, ...newState });
+        return newState;
+      });
+      return { success: true, errors: [] };
+    },
+    cancelImport: () => set({ importPreview: null }),
 
     exportConfig: () => {
       const s = get();

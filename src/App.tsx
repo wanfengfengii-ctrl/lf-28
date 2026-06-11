@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Toolbar from '@/components/Toolbar/Toolbar';
 import Home from '@/pages/Home';
 import Plans from '@/pages/Plans';
+import ConfirmModal from '@/components/Modals/ConfirmModal';
+import ImportPreviewModal from '@/components/Modals/ImportPreviewModal';
 
 export default function App() {
   return (
@@ -14,6 +16,8 @@ export default function App() {
             <Route path="/plans" element={<Plans />} />
           </Routes>
         </div>
+        <ConfirmModal />
+        <ImportPreviewModal />
       </div>
     </Router>
   );
