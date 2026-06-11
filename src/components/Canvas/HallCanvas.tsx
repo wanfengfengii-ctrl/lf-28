@@ -25,13 +25,13 @@ export default function HallCanvas() {
 
   const routeHallIds = useMemo(() => {
     if (!activePlan) return [];
-    const seen = new Set<string>();
     const ordered: string[] = [];
+    let lastHallId: string | null = null;
     for (const stop of activePlan.stops) {
       const exhibit = exhibits.find((e) => e.id === stop.exhibitId);
-      if (exhibit && !seen.has(exhibit.hallId)) {
-        seen.add(exhibit.hallId);
+      if (exhibit && exhibit.hallId !== lastHallId) {
         ordered.push(exhibit.hallId);
+        lastHallId = exhibit.hallId;
       }
     }
     return ordered;
