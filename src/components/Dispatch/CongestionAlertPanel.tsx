@@ -1,0 +1,395 @@
+import { useState } from 'react';
+import { useMuseumStore } from '@/store/museumStore';
+import {
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle,
+  Trash2,
+  Plus,
+  Route,
+  Clock,
+  Users,
+  Save,
+  X,
+} from 'lucide-react';
+import { AUDIENCE_LABELS, AUDIENCE_COLORS } from '@/types';
+import type { AudienceType } from '@/types';
+
+interface AddRouteForm {
+  name: string;
+  audienceType: AudienceType;
+  originalPlanId: string;
+  reason: string;
+  peakHours: string;
+}
+
+const initialAddForm: AddRouteForm = {
+  name: '',
+  audienceType: 'general',
+  originalPlanId: '',
+  reason: '',
+  peakHours: '',
+};
+
+function formatTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+export default function CongestionAlertPanel() {
+  const congestionAlerts = useMuseumStore((s) => s.congestionAlerts);
+  const halls = useMuseumStore((s) => s.halls);
+  const alternativeRoutes = useMuseumStore((s) => s.alternativeRoutes);
+  const plans = useMuseumStore((s) => s.plans);
+  const addAlternativeRoute = useMuseumStore((s) => s.addAlternativeRoute);
+  const removeAlternativeRoute = useMuseumStore((s) => s.removeAlternativeRoute);
+  const resolveCongestionAlert = useMuseumStore((s) => s.resolveCongestionAlert);
+  const removeCongestionAlert = useMuseumStore((s) => s.removeCongestionAlert);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState<AddRouteForm>(initialAddForm);
+
+  const sortedAlerts = [...congestionAlerts].sort((a, b) => {
+    if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+    return b.timestamp - a.timestamp;
+  });
+
+  function getHallName(hallId: string): string {
+    return halls.find((h) => h.id === hallId)?.name || '未知展厅';
+  }
+
+  function getPlanName(planId: string): string {
+    return plans.find((p) => p.id === planId)?.name || '未知方案';
+  }
+
+  function getLevelConfig(level: 'warning' | 'critical') {
+    if (level === 'critical') {
+      return {
+        icon: <AlertCircle size={14} />,
+        label: '严重',
+        bg: 'bg-red-50',
+        border: 'border-red-200',
+        text: 'text-red-600',
+        badgeBg: 'bg-red-100',
+        badgeText: 'text-red-700',
+        pulse: 'animate-pulse',
+      };
+    }
+    return {
+      icon: <AlertTriangle size={14} />,
+      label: '预警',
+      bg: 'bg-amber-50',
+      border: 'border-amber-200',
+      text: 'text-amber-600',
+      badgeBg: 'bg-amber-100',
+      badgeText: 'text-amber-700',
+      pulse: 'animate-pulse',
+    };
+  }
+
+  function handleAddSubmit() {
+    if (!addForm.name || !addForm.originalPlanId || !addForm.reason) {
+      return;
+    }
+    const peakHoursArr = addForm.peakHours
+      .split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    addAlternativeRoute({
+      name: addForm.name,
+      audienceType: addForm.audienceType,
+      originalPlanId: addForm.originalPlanId,
+      stopIds: [],
+      reason: addForm.reason,
+      peakHours: peakHoursArr,
+    });
+    setAddForm(initialAddForm);
+    setShowAddForm(false);
+  }
+
+  function handleAddCancel() {
+    setAddForm(initialAddForm);
+    setShowAddForm(false);
+  }
+
+  return (
+    <div className="flex h-full flex-col bg-slate-50">
+      <div className="flex-1 overflow-y-auto space-y-4 p-3">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-xs font-semibold text-slate-700">拥堵预警列表</span>
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+              {sortedAlerts.filter((a) => !a.resolved).length} 未解决
+            </span>
+          </div>
+
+          {sortedAlerts.length === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
+              暂无拥堵预警
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {sortedAlerts.map((alert) => {
+              const config = getLevelConfig(alert.level);
+              return (
+                <div
+                  key={alert.id}
+                  className={`rounded-lg border p-3 ${config.bg} ${config.border} ${
+                    !alert.resolved ? config.pulse : ''
+                  } ${alert.resolved ? 'opacity-60' : ''}`}
+                >
+                  <div className="flex items-start gap-2 mb-2">
+                    <span
+                      className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${config.badgeBg} ${config.badgeText}`}
+                    >
+                      {config.icon}
+                      {config.label}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-800 truncate">
+                      {getHallName(alert.hallId)}
+                    </span>
+                    {alert.resolved && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        <CheckCircle size={10} />
+                        已解决
+                      </span>
+                    )}
+                    <span className="ml-auto flex items-center gap-1 text-[10px] text-slate-500">
+                      <Clock size={10} />
+                      {formatTime(alert.timestamp)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-700 mb-2">{alert.message}</p>
+
+                  {alert.suggestions.length > 0 && (
+                    <div className="mb-2 rounded-md bg-white/60 p-2">
+                      <p className="text-[10px] font-medium text-slate-500 mb-1">处理建议：</p>
+                      <ul className="space-y-0.5">
+                        {alert.suggestions.map((s, idx) => (
+                          <li key={idx} className="flex items-start gap-1 text-[11px] text-slate-600">
+                            <span className="text-slate-400 mt-0.5">•</span>
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-1">
+                    {!alert.resolved && (
+                      <button
+                        onClick={() => resolveCongestionAlert(alert.id)}
+                        className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-emerald-600 hover:bg-emerald-50 transition-colors"
+                      >
+                        <CheckCircle size={12} />
+                        标记已解决
+                      </button>
+                    )}
+                    <button
+                      onClick={() => removeCongestionAlert(alert.id)}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={12} />
+                      删除
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Route className="h-4 w-4 text-museum-teal shrink-0" />
+              <span className="text-xs font-semibold text-slate-700">替代路线管理</span>
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                {alternativeRoutes.length}
+              </span>
+            </div>
+            <button
+              onClick={() => setShowAddForm((v) => !v)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100 hover:text-museum-gold transition-colors"
+            >
+              <Plus size={13} />
+              添加路线
+            </button>
+          </div>
+
+          {showAddForm && (
+            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-700">添加替代路线</span>
+                <button
+                  onClick={handleAddCancel}
+                  className="rounded p-0.5 text-slate-400 hover:bg-slate-100"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-slate-500">路线名称</label>
+                <input
+                  type="text"
+                  value={addForm.name}
+                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+                  placeholder="请输入路线名称"
+                  className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-museum-gold focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-500">适用观众</label>
+                  <select
+                    value={addForm.audienceType}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, audienceType: e.target.value as AudienceType })
+                    }
+                    className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-museum-gold focus:outline-none bg-white"
+                  >
+                    {(['children', 'general', 'research'] as const).map((t) => (
+                      <option key={t} value={t}>
+                        {AUDIENCE_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500">关联原方案</label>
+                  <select
+                    value={addForm.originalPlanId}
+                    onChange={(e) => setAddForm({ ...addForm, originalPlanId: e.target.value })}
+                    className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-museum-gold focus:outline-none bg-white"
+                  >
+                    <option value="">请选择方案</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-slate-500">启用原因</label>
+                <textarea
+                  value={addForm.reason}
+                  onChange={(e) => setAddForm({ ...addForm, reason: e.target.value })}
+                  placeholder="请输入启用该替代路线的原因"
+                  rows={2}
+                  className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-museum-gold focus:outline-none resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] text-slate-500">高峰时段（逗号分隔）</label>
+                <input
+                  type="text"
+                  value={addForm.peakHours}
+                  onChange={(e) => setAddForm({ ...addForm, peakHours: e.target.value })}
+                  placeholder="例如：09:00-11:00, 14:00-16:00"
+                  className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-museum-gold focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-1 pt-1">
+                <button
+                  onClick={handleAddCancel}
+                  className="rounded-md px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleAddSubmit}
+                  className="flex items-center gap-1 rounded-md bg-museum-gold px-2.5 py-1 text-xs text-white hover:bg-amber-600 transition-colors"
+                >
+                  <Save size={12} />
+                  保存
+                </button>
+              </div>
+            </div>
+          )}
+
+          {alternativeRoutes.length === 0 && !showAddForm && (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
+              暂无替代路线，点击右上角添加
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {alternativeRoutes.map((route) => {
+              const audienceColor = AUDIENCE_COLORS[route.audienceType];
+              return (
+                <div
+                  key={route.id}
+                  className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-start gap-2 mb-2">
+                    <Route size={14} className="text-museum-teal shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-800 truncate">
+                          {route.name}
+                        </span>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{
+                            backgroundColor: `${audienceColor}20`,
+                            color: audienceColor,
+                          }}
+                        >
+                          <Users size={10} />
+                          {AUDIENCE_LABELS[route.audienceType]}
+                        </span>
+                      </div>
+                      {route.originalPlanId && (
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          基于方案：{getPlanName(route.originalPlanId)}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => removeAlternativeRoute(route.id)}
+                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors shrink-0"
+                      title="删除"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  <div className="rounded-md bg-slate-50 p-2 mb-2">
+                    <p className="text-[11px] text-slate-600">{route.reason}</p>
+                  </div>
+
+                  {route.peakHours.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Clock size={11} className="text-slate-400 shrink-0" />
+                      <span className="text-[10px] text-slate-500">高峰时段：</span>
+                      {route.peakHours.map((h, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600"
+                        >
+                          {h}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

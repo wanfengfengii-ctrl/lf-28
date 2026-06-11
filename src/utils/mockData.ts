@@ -1,8 +1,81 @@
-import type { Hall, Exhibit, HallConnection, TourPlan } from '@/types';
+import type {
+  Hall,
+  Exhibit,
+  HallConnection,
+  TourPlan,
+  TimeSlot,
+  HallCapacity,
+  GuideResource,
+  AlternativeRoute,
+  CongestionAlert,
+} from '@/types';
 
 function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
+
+export const initialTimeSlots: TimeSlot[] = [
+  { id: 'ts1', startTime: '09:00', endTime: '10:00', expectedVisitors: 150, actualVisitors: 142, status: 'completed' },
+  { id: 'ts2', startTime: '10:00', endTime: '11:00', expectedVisitors: 200, actualVisitors: 198, status: 'completed' },
+  { id: 'ts3', startTime: '11:00', endTime: '12:00', expectedVisitors: 250, actualVisitors: 245, status: 'ongoing' },
+  { id: 'ts4', startTime: '13:00', endTime: '14:00', expectedVisitors: 200, actualVisitors: 0, status: 'scheduled' },
+  { id: 'ts5', startTime: '14:00', endTime: '15:00', expectedVisitors: 250, actualVisitors: 0, status: 'scheduled' },
+  { id: 'ts6', startTime: '15:00', endTime: '16:00', expectedVisitors: 200, actualVisitors: 0, status: 'scheduled' },
+  { id: 'ts7', startTime: '16:00', endTime: '17:00', expectedVisitors: 150, actualVisitors: 0, status: 'scheduled' },
+];
+
+export const initialHallCapacities: HallCapacity[] = [
+  { hallId: 'h1', maxCapacity: 80, currentVisitors: 45, warningThreshold: 60, criticalThreshold: 75, status: 'normal' },
+  { hallId: 'h2', maxCapacity: 60, currentVisitors: 52, warningThreshold: 45, criticalThreshold: 55, status: 'warning' },
+  { hallId: 'h3', maxCapacity: 50, currentVisitors: 48, warningThreshold: 38, criticalThreshold: 45, status: 'critical' },
+  { hallId: 'h4', maxCapacity: 70, currentVisitors: 30, warningThreshold: 53, criticalThreshold: 65, status: 'normal' },
+  { hallId: 'h5', maxCapacity: 100, currentVisitors: 60, warningThreshold: 75, criticalThreshold: 90, status: 'normal' },
+];
+
+export const initialGuideResources: GuideResource[] = [
+  { id: 'gr1', name: '张讲解员', type: 'guide', status: 'assigned', assignedPlanId: 'p2', assignedTimeSlotId: 'ts3', contact: '13800000001' },
+  { id: 'gr2', name: '李讲解员', type: 'guide', status: 'available', assignedPlanId: null, assignedTimeSlotId: null, contact: '13800000002' },
+  { id: 'gr3', name: '王志愿者', type: 'volunteer', status: 'busy', assignedPlanId: 'p1', assignedTimeSlotId: 'ts3', contact: '13800000003' },
+  { id: 'gr4', name: '赵志愿者', type: 'volunteer', status: 'available', assignedPlanId: null, assignedTimeSlotId: null },
+  { id: 'gr5', name: '语音设备-A01', type: 'audio_device', status: 'assigned', assignedPlanId: 'p3', assignedTimeSlotId: 'ts3' },
+  { id: 'gr6', name: '语音设备-A02', type: 'audio_device', status: 'available', assignedPlanId: null, assignedTimeSlotId: null },
+  { id: 'gr7', name: '语音设备-A03', type: 'audio_device', status: 'available', assignedPlanId: null, assignedTimeSlotId: null },
+  { id: 'gr8', name: '陈讲解员', type: 'guide', status: 'rest', assignedPlanId: null, assignedTimeSlotId: null, contact: '13800000004' },
+];
+
+export const initialAlternativeRoutes: AlternativeRoute[] = [
+  {
+    id: 'ar1',
+    name: '儿童避峰路线',
+    audienceType: 'children',
+    originalPlanId: 'p1',
+    stopIds: [],
+    reason: '书画艺术厅高峰期拥挤，建议先参观民俗文化馆',
+    peakHours: ['10:00-12:00', '14:00-16:00'],
+    createdAt: Date.now() - 3600000,
+  },
+];
+
+export const initialCongestionAlerts: CongestionAlert[] = [
+  {
+    id: 'ca1',
+    hallId: 'h3',
+    level: 'critical',
+    message: '瓷器展厅当前人数接近最大容纳量，存在严重拥堵风险',
+    timestamp: Date.now() - 600000,
+    resolved: false,
+    suggestions: ['引导观众先参观其他展厅', '增加该区域志愿者', '启动替代导览路线'],
+  },
+  {
+    id: 'ca2',
+    hallId: 'h2',
+    level: 'warning',
+    message: '书画艺术厅人流量较高，请关注后续变化',
+    timestamp: Date.now() - 1200000,
+    resolved: false,
+    suggestions: ['准备分流预案', '提醒讲解员控制参观节奏'],
+  },
+];
 
 export const initialHalls: Hall[] = [
   { id: 'h1', name: '古代文明厅', x: 80, y: 60, width: 220, height: 140 },

@@ -11,8 +11,14 @@ import type {
   ValidationCenterReport,
   ImportPreviewData,
   RouteConfig,
+  TimeSlot,
+  HallCapacity,
+  GuideResource,
+  AlternativeRoute,
+  CongestionAlert,
+  DispatchExportData,
 } from '@/types';
-import { initialHalls, initialExhibits, initialConnections, initialPlans } from '@/utils/mockData';
+import { initialHalls, initialExhibits, initialConnections, initialPlans, initialTimeSlots, initialHallCapacities, initialGuideResources, initialAlternativeRoutes, initialCongestionAlerts } from '@/utils/mockData';
 import {
   computeStats,
   validateImportConfig,
@@ -27,7 +33,17 @@ function uid(): string {
 
 const STORAGE_KEY = 'museum-guide-config';
 
-function loadFromStorage(): { halls: Hall[]; exhibits: Exhibit[]; connections: HallConnection[]; plans: TourPlan[] } | null {
+function loadFromStorage(): {
+  halls: Hall[];
+  exhibits: Exhibit[];
+  connections: HallConnection[];
+  plans: TourPlan[];
+  timeSlots: TimeSlot[];
+  hallCapacities: HallCapacity[];
+  guideResources: GuideResource[];
+  alternativeRoutes: AlternativeRoute[];
+  congestionAlerts: CongestionAlert[];
+} | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
@@ -46,6 +62,11 @@ function saveToStorage(state: MuseumState) {
         exhibits: state.exhibits,
         connections: state.connections,
         plans: state.plans,
+        timeSlots: state.timeSlots,
+        hallCapacities: state.hallCapacities,
+        guideResources: state.guideResources,
+        alternativeRoutes: state.alternativeRoutes,
+        congestionAlerts: state.congestionAlerts,
       })
     );
   } catch {
@@ -58,6 +79,11 @@ interface MuseumState {
   exhibits: Exhibit[];
   connections: HallConnection[];
   plans: TourPlan[];
+  timeSlots: TimeSlot[];
+  hallCapacities: HallCapacity[];
+  guideResources: GuideResource[];
+  alternativeRoutes: AlternativeRoute[];
+  congestionAlerts: CongestionAlert[];
   activePlanId: string | null;
   playingStopIndex: number | null;
   isPlaying: boolean;
@@ -114,6 +140,30 @@ interface MuseumState {
 
   exportConfig: () => string;
   importConfig: (json: string) => { success: boolean; errors: string[] };
+
+  addTimeSlot: (slot: Omit<TimeSlot, 'id'>) => void;
+  updateTimeSlot: (id: string, updates: Partial<TimeSlot>) => void;
+  removeTimeSlot: (id: string) => void;
+
+  updateHallCapacity: (hallId: string, updates: Partial<HallCapacity>) => void;
+  updateHallVisitors: (hallId: string, visitors: number) => void;
+
+  addGuideResource: (resource: Omit<GuideResource, 'id'>) => void;
+  updateGuideResource: (id: string, updates: Partial<GuideResource>) => void;
+  removeGuideResource: (id: string) => void;
+  assignResource: (resourceId: string, planId: string, timeSlotId: string) => void;
+  unassignResource: (resourceId: string) => void;
+
+  addAlternativeRoute: (route: Omit<AlternativeRoute, 'id' | 'createdAt'>) => void;
+  removeAlternativeRoute: (id: string) => void;
+
+  addCongestionAlert: (alert: Omit<CongestionAlert, 'id' | 'timestamp'>) => void;
+  resolveCongestionAlert: (id: string) => void;
+  removeCongestionAlert: (id: string) => void;
+
+  checkAndGenerateCongestionAlerts: () => void;
+
+  exportDispatchPlan: () => DispatchExportData;
 }
 
 export const useMuseumStore = create<MuseumState>((set, get) => {
@@ -123,6 +173,11 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
     exhibits: initialExhibits,
     connections: initialConnections,
     plans: initialPlans,
+    timeSlots: initialTimeSlots,
+    hallCapacities: initialHallCapacities,
+    guideResources: initialGuideResources,
+    alternativeRoutes: initialAlternativeRoutes,
+    congestionAlerts: initialCongestionAlerts,
   };
 
   return {
@@ -568,6 +623,208 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
       } catch {
         return { success: false, errors: ['JSON 格式解析失败'] };
       }
+    },
+
+    addTimeSlot: (slot) => {
+      const newSlot: TimeSlot = { ...slot, id: uid() };
+      set((s) => {
+        const timeSlots = [...s.timeSlots, newSlot].sort((a, b) => a.startTime.localeCompare(b.startTime));
+        saveToStorage({ ...s, timeSlots });
+        return { timeSlots };
+      });
+    },
+    updateTimeSlot: (id, updates) => {
+      set((s) => {
+        const timeSlots = s.timeSlots.map((t) => (t.id === id ? { ...t, ...updates } : t));
+        saveToStorage({ ...s, timeSlots });
+        return { timeSlots };
+      });
+    },
+    removeTimeSlot: (id) => {
+      set((s) => {
+        const timeSlots = s.timeSlots.filter((t) => t.id !== id);
+        const guideResources = s.guideResources.map((r) =>
+          r.assignedTimeSlotId === id ? { ...r, assignedTimeSlotId: null, status: 'available' as const } : r
+        );
+        saveToStorage({ ...s, timeSlots, guideResources });
+        return { timeSlots, guideResources };
+      });
+    },
+
+    updateHallCapacity: (hallId, updates) => {
+      set((s) => {
+        let hallCapacities = s.hallCapacities.map((h) =>
+          h.hallId === hallId ? { ...h, ...updates } : h
+        );
+        if (!hallCapacities.some((h) => h.hallId === hallId)) {
+          hallCapacities = [
+            ...hallCapacities,
+            { hallId, maxCapacity: 50, currentVisitors: 0, warningThreshold: 38, criticalThreshold: 45, status: 'normal', ...updates } as HallCapacity,
+          ];
+        }
+        saveToStorage({ ...s, hallCapacities });
+        return { hallCapacities };
+      });
+    },
+    updateHallVisitors: (hallId, visitors) => {
+      const s = get();
+      const cap = s.hallCapacities.find((h) => h.hallId === hallId);
+      if (!cap) {
+        get().updateHallCapacity(hallId, { currentVisitors: visitors, status: 'normal' });
+        return;
+      }
+      let status: HallCapacity['status'] = 'normal';
+      if (visitors >= cap.criticalThreshold) status = 'critical';
+      else if (visitors >= cap.warningThreshold) status = 'warning';
+      set((state) => {
+        const hallCapacities = state.hallCapacities.map((h) =>
+          h.hallId === hallId ? { ...h, currentVisitors: visitors, status } : h
+        );
+        saveToStorage({ ...state, hallCapacities });
+        return { hallCapacities };
+      });
+      get().checkAndGenerateCongestionAlerts();
+    },
+
+    addGuideResource: (resource) => {
+      const newResource: GuideResource = { ...resource, id: uid() };
+      set((s) => {
+        const guideResources = [...s.guideResources, newResource];
+        saveToStorage({ ...s, guideResources });
+        return { guideResources };
+      });
+    },
+    updateGuideResource: (id, updates) => {
+      set((s) => {
+        const guideResources = s.guideResources.map((r) => (r.id === id ? { ...r, ...updates } : r));
+        saveToStorage({ ...s, guideResources });
+        return { guideResources };
+      });
+    },
+    removeGuideResource: (id) => {
+      set((s) => {
+        const guideResources = s.guideResources.filter((r) => r.id !== id);
+        saveToStorage({ ...s, guideResources });
+        return { guideResources };
+      });
+    },
+    assignResource: (resourceId, planId, timeSlotId) => {
+      set((s) => {
+        const guideResources = s.guideResources.map((r) =>
+          r.id === resourceId
+            ? { ...r, assignedPlanId: planId, assignedTimeSlotId: timeSlotId, status: 'assigned' as const }
+            : r
+        );
+        saveToStorage({ ...s, guideResources });
+        return { guideResources };
+      });
+    },
+    unassignResource: (resourceId) => {
+      set((s) => {
+        const guideResources = s.guideResources.map((r) =>
+          r.id === resourceId
+            ? { ...r, assignedPlanId: null, assignedTimeSlotId: null, status: 'available' as const }
+            : r
+        );
+        saveToStorage({ ...s, guideResources });
+        return { guideResources };
+      });
+    },
+
+    addAlternativeRoute: (route) => {
+      const newRoute: AlternativeRoute = { ...route, id: uid(), createdAt: Date.now() };
+      set((s) => {
+        const alternativeRoutes = [...s.alternativeRoutes, newRoute];
+        saveToStorage({ ...s, alternativeRoutes });
+        return { alternativeRoutes };
+      });
+    },
+    removeAlternativeRoute: (id) => {
+      set((s) => {
+        const alternativeRoutes = s.alternativeRoutes.filter((r) => r.id !== id);
+        saveToStorage({ ...s, alternativeRoutes });
+        return { alternativeRoutes };
+      });
+    },
+
+    addCongestionAlert: (alert) => {
+      const newAlert: CongestionAlert = { ...alert, id: uid(), timestamp: Date.now() };
+      set((s) => {
+        const congestionAlerts = [newAlert, ...s.congestionAlerts];
+        saveToStorage({ ...s, congestionAlerts });
+        return { congestionAlerts };
+      });
+    },
+    resolveCongestionAlert: (id) => {
+      set((s) => {
+        const congestionAlerts = s.congestionAlerts.map((a) =>
+          a.id === id ? { ...a, resolved: true } : a
+        );
+        saveToStorage({ ...s, congestionAlerts });
+        return { congestionAlerts };
+      });
+    },
+    removeCongestionAlert: (id) => {
+      set((s) => {
+        const congestionAlerts = s.congestionAlerts.filter((a) => a.id !== id);
+        saveToStorage({ ...s, congestionAlerts });
+        return { congestionAlerts };
+      });
+    },
+
+    checkAndGenerateCongestionAlerts: () => {
+      const s = get();
+      const existingUnresolved = new Set(
+        s.congestionAlerts.filter((a) => !a.resolved).map((a) => a.hallId)
+      );
+      for (const cap of s.hallCapacities) {
+        const hall = s.halls.find((h) => h.id === cap.hallId);
+        const hallName = hall?.name || '未知展厅';
+        if (cap.status === 'critical' && !existingUnresolved.has(cap.hallId)) {
+          get().addCongestionAlert({
+            hallId: cap.hallId,
+            level: 'critical',
+            message: `${hallName}当前人数接近最大容纳量(${cap.currentVisitors}/${cap.maxCapacity})，存在严重拥堵风险`,
+            resolved: false,
+            suggestions: ['引导观众先参观其他展厅', '增加该区域志愿者', '启动替代导览路线'],
+          });
+        } else if (cap.status === 'warning' && !existingUnresolved.has(cap.hallId)) {
+          get().addCongestionAlert({
+            hallId: cap.hallId,
+            level: 'warning',
+            message: `${hallName}人流量较高(${cap.currentVisitors}/${cap.maxCapacity})，请关注后续变化`,
+            resolved: false,
+            suggestions: ['准备分流预案', '提醒讲解员控制参观节奏'],
+          });
+        }
+      }
+    },
+
+    exportDispatchPlan: () => {
+      const s = get();
+      const totalExpectedVisitors = s.timeSlots.reduce((sum, t) => sum + t.expectedVisitors, 0);
+      const totalActualVisitors = s.timeSlots.reduce((sum, t) => sum + t.actualVisitors, 0);
+      return {
+        exportedAt: Date.now(),
+        date: new Date().toISOString().split('T')[0],
+        timeSlots: s.timeSlots,
+        hallCapacities: s.hallCapacities.map((c) => ({
+          ...c,
+          hallName: s.halls.find((h) => h.id === c.hallId)?.name || c.hallId,
+        })),
+        resources: s.guideResources,
+        alternativeRoutes: s.alternativeRoutes,
+        alerts: s.congestionAlerts,
+        summary: {
+          totalExpectedVisitors,
+          totalActualVisitors,
+          normalHalls: s.hallCapacities.filter((h) => h.status === 'normal').length,
+          warningHalls: s.hallCapacities.filter((h) => h.status === 'warning').length,
+          criticalHalls: s.hallCapacities.filter((h) => h.status === 'critical').length,
+          availableResources: s.guideResources.filter((r) => r.status === 'available').length,
+          activeAlerts: s.congestionAlerts.filter((a) => !a.resolved).length,
+        },
+      };
     },
   };
 });

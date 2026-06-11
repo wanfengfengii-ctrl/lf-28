@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMuseumStore } from '@/store/museumStore';
 import HallNode from './HallNode';
 import ConnectionLine from './ConnectionLine';
-import type { Hall, HallConnection } from '@/types';
+import type { HallConnection } from '@/types';
 import {
   Plus,
   Minus,

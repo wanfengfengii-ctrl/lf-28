@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useMuseumStore } from '@/store/museumStore';
-import { Building2, Upload, Download, RotateCcw, AlertCircle } from 'lucide-react';
+import { Building2, Upload, Download, RotateCcw, AlertCircle, BarChart3 } from 'lucide-react';
 
 export default function Toolbar() {
   const importConfig = useMuseumStore((s) => s.importConfig);
@@ -116,6 +116,13 @@ export default function Toolbar() {
           className="rounded-md px-3 py-1.5 text-xs text-white/90 hover:bg-white/15 transition-colors"
         >
           方案管理
+        </Link>
+        <Link
+          to="/dispatch"
+          className="rounded-md px-3 py-1.5 text-xs text-white/90 hover:bg-white/15 transition-colors flex items-center gap-1"
+        >
+          <BarChart3 size={12} />
+          调度中心
         </Link>
       </div>
     </div>
