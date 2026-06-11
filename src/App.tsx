@@ -1,0 +1,20 @@
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Toolbar from '@/components/Toolbar/Toolbar';
+import Home from '@/pages/Home';
+import Plans from '@/pages/Plans';
+
+export default function App() {
+  return (
+    <Router>
+      <div className="flex flex-col h-screen">
+        <Toolbar />
+        <div className="flex-1 overflow-hidden">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/plans" element={<Plans />} />
+          </Routes>
+        </div>
+      </div>
+    </Router>
+  );
+}
