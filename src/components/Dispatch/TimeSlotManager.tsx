@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Edit2, Trash2, Clock, Users, Save, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Clock, Users, Save, X, Minus } from 'lucide-react';
 import { useMuseumStore } from '@/store/museumStore';
 import { SLOT_STATUS_LABELS } from '@/types';
 import type { TimeSlot } from '@/types';
@@ -20,6 +20,7 @@ interface AddFormState {
 interface EditState {
   id: string;
   expectedVisitors: string;
+  actualVisitors: string;
   status: TimeSlot['status'];
 }
 
@@ -67,6 +68,7 @@ export default function TimeSlotManager() {
     setEditState({
       id: slot.id,
       expectedVisitors: slot.expectedVisitors.toString(),
+      actualVisitors: slot.actualVisitors.toString(),
       status: slot.status,
     });
   }
@@ -74,9 +76,11 @@ export default function TimeSlotManager() {
   function handleEditSave() {
     if (!editState) return;
     const expected = parseInt(editState.expectedVisitors, 10);
-    if (isNaN(expected) || expected <= 0) return;
+    const actual = parseInt(editState.actualVisitors, 10);
+    if (isNaN(expected) || expected <= 0 || isNaN(actual) || actual < 0) return;
     updateTimeSlot(editState.id, {
       expectedVisitors: expected,
+      actualVisitors: actual,
       status: editState.status,
     });
     setEditingId(null);
@@ -86,6 +90,13 @@ export default function TimeSlotManager() {
   function handleEditCancel() {
     setEditingId(null);
     setEditState(null);
+  }
+
+  function adjustActualVisitors(slotId: string, delta: number) {
+    const slot = timeSlots.find((s) => s.id === slotId);
+    if (!slot) return;
+    const newActual = Math.max(0, slot.actualVisitors + delta);
+    updateTimeSlot(slotId, { actualVisitors: newActual });
   }
 
   function handleDelete(slot: TimeSlot) {
@@ -211,7 +222,7 @@ export default function TimeSlotManager() {
                   {isEditing && editState ? (
                     <div className="mt-2.5 space-y-2">
                       <div className="flex items-center gap-2">
-                        <label className="text-[11px] text-slate-500 w-16">预计人数</label>
+                        <label className="text-[11px] text-slate-500 w-16 shrink-0">预计人数</label>
                         <input
                           type="number"
                           min="1"
@@ -223,7 +234,19 @@ export default function TimeSlotManager() {
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <label className="text-[11px] text-slate-500 w-16">状态</label>
+                        <label className="text-[11px] text-slate-500 w-16 shrink-0">实际人数</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editState.actualVisitors}
+                          onChange={(e) =>
+                            setEditState({ ...editState, actualVisitors: e.target.value })
+                          }
+                          className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs focus:border-museum-gold focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] text-slate-500 w-16 shrink-0">状态</label>
                         <select
                           value={editState.status}
                           onChange={(e) =>
@@ -259,20 +282,40 @@ export default function TimeSlotManager() {
                     </div>
                   ) : (
                     <>
-                      <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                      <div className="mt-2 flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Users size={12} className="text-slate-400" />
                           预计 <span className="font-medium text-slate-700 tabular-nums">{slot.expectedVisitors}</span>
                         </span>
-                        <span className="flex items-center gap-1">
-                          实际 <span className="font-medium text-slate-700 tabular-nums">{slot.actualVisitors}</span>
+                        <span className="flex items-center gap-2">
+                          <span>实际</span>
+                          <div className="flex items-center gap-0.5">
+                            <button
+                              onClick={() => adjustActualVisitors(slot.id, -5)}
+                              disabled={slot.actualVisitors <= 0}
+                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              title="减少5人"
+                            >
+                              <Minus size={10} />
+                            </button>
+                            <div className="flex h-6 min-w-[56px] items-center justify-center rounded border border-slate-200 px-2 text-xs font-bold text-slate-800 tabular-nums bg-slate-50">
+                              {slot.actualVisitors}
+                            </div>
+                            <button
+                              onClick={() => adjustActualVisitors(slot.id, 5)}
+                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors"
+                              title="增加5人"
+                            >
+                              <Plus size={10} />
+                            </button>
+                          </div>
                         </span>
                       </div>
 
                       <div className="mt-2">
                         <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
                           <span>人数进度</span>
-                          <span className="tabular-nums">{slot.actualVisitors} / {slot.expectedVisitors}</span>
+                          <span className="tabular-nums">{slot.actualVisitors} / {slot.expectedVisitors} ({Math.round(progress)}%)</span>
                         </div>
                         <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
                           <div

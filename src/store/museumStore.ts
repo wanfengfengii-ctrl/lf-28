@@ -155,7 +155,8 @@ interface MuseumState {
   unassignResource: (resourceId: string) => void;
 
   addAlternativeRoute: (route: Omit<AlternativeRoute, 'id' | 'createdAt'>) => void;
-  removeAlternativeRoute: (id: string) => void;
+    updateAlternativeRoute: (id: string, updates: Partial<AlternativeRoute>) => void;
+    removeAlternativeRoute: (id: string) => void;
 
   addCongestionAlert: (alert: Omit<CongestionAlert, 'id' | 'timestamp'>) => void;
   resolveCongestionAlert: (id: string) => void;
@@ -735,6 +736,15 @@ export const useMuseumStore = create<MuseumState>((set, get) => {
       const newRoute: AlternativeRoute = { ...route, id: uid(), createdAt: Date.now() };
       set((s) => {
         const alternativeRoutes = [...s.alternativeRoutes, newRoute];
+        saveToStorage({ ...s, alternativeRoutes });
+        return { alternativeRoutes };
+      });
+    },
+    updateAlternativeRoute: (id, updates) => {
+      set((s) => {
+        const alternativeRoutes = s.alternativeRoutes.map((r) =>
+          r.id === id ? { ...r, ...updates } : r
+        );
         saveToStorage({ ...s, alternativeRoutes });
         return { alternativeRoutes };
       });
